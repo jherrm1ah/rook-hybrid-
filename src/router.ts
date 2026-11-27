@@ -60,3 +60,49 @@ export function decide(text: string, opts: { mode: Mode; hasImage: boolean; devi
 export function promptFor(text: string): string {
   return text.replace(/^\/research\s*/i, "").trim();
 }
+
+/* ---------------- Self-check: the device grades its own answer ---------------- */
+
+/** What Gemini Nano says about its own answer. */
+export interface Grade {
+  /** 0–100: how sure the device is that its answer is correct and complete. */
+  confidence: number;
+  /** The device itself says this needs a bigger model (fresh facts, deep expertise, long reasoning). */
+  needsCloud: boolean;
+  reason: string;
+}
+
+/** Below this, the cloud is asked to improve the device's answer. */
+export const CONFIDENCE_THRESHOLD = 60;
+
+/** Reads the device's grade, whatever shape it came back in; unreadable means "unsure". */
+export function parseGrade(raw: string): Grade {
+  try {
+    const j = JSON.parse(raw) as { confidence?: unknown; needs_cloud?: unknown; reason?: unknown };
+    const c = Number(j.confidence);
+    return {
+      confidence: Number.isFinite(c) ? Math.max(0, Math.min(100, Math.round(c))) : 50,
+      needsCloud: j.needs_cloud === true,
+      reason: typeof j.reason === "string" ? j.reason.slice(0, 160) : "",
+    };
+  } catch {
+    return { confidence: 50, needsCloud: false, reason: "The device couldn't grade its answer." };
+  }
+}
+
+/** Escalate when the device is unsure, unless the cloud is off-limits (private mode, offline). */
+export function shouldEscalate(g: Grade, opts: { online: boolean; deviceOnly: boolean }): boolean {
+  if (!opts.online || opts.deviceOnly) return false;
+  return g.needsCloud || g.confidence < CONFIDENCE_THRESHOLD;
+}
+
+/** Rough tokens for a piece of text (about 4 characters per token), for the "kept on this device" counter. */
+export const tokensIn = (text: string) => Math.ceil(text.length / 4);
+
+/** The cloud's job when it's called in to improve the device's draft. */
+export function improvePrompt(draft: string): string {
+  return (
+    `A small on-device model already drafted an answer to my last message:\n"""\n${draft.slice(0, 4000)}\n"""\n` +
+    `It wasn't confident. Write the best answer yourself: keep what's right, fix anything wrong, fill gaps. Reply with the answer only.`
+  );
+}

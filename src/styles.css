@@ -168,3 +168,28 @@ button:disabled { cursor: default; opacity: 0.5; }
 .history__toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .history__clear { color: var(--danger); font-size: 12.5px; padding: 4px 8px; border-radius: 999px; }
 .history__clear:hover { background: var(--coral-wash); }
+
+/* Route trail: every step an answer took */
+.trail { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 0; margin: 10px 0 0; padding: 0; font-size: 12px; color: var(--muted); }
+.trail li { display: flex; align-items: center; }
+.trail li + li::before { content: "→"; margin: 0 7px; color: var(--faint); }
+.msg__tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; margin-top: 10px; }
+.mini { padding: 4px 11px; border-radius: 999px; font-size: 12.5px; background: var(--ice-2); border: 1px solid var(--line); }
+.mini:hover:not(:disabled), .mini.on { background: var(--ink); color: #fff; }
+.draft { font-size: 13px; border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; background: var(--ice-2); }
+.draft summary { cursor: pointer; padding: 2px 0; color: var(--teal-text); font-weight: 600; }
+.draft[open] { flex-basis: 100%; }
+
+/* X-ray: what the cloud saw */
+.xray { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; animation: rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.xray section { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--ice-2); min-width: 0; }
+.xray section:last-of-type { border-color: rgba(47, 111, 228, 0.35); }
+.xray h4 { margin: 0 0 4px; font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.xray pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.5 ui-monospace, "Cascadia Code", monospace; max-height: 220px; overflow-y: auto; }
+.xray mark { background: rgba(0, 209, 178, 0.22); color: var(--teal-text); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+.xray__note { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--teal-text); }
+@media (max-width: 640px) { .xray { grid-template-columns: 1fr; } }
+
+/* Savings meter + offline */
+.stats__saved { color: var(--teal-text); font-weight: 600; }
+.offline { padding: 8px 14px; border-radius: 14px; background: var(--ink); color: #fff; font-size: 13.5px; text-align: center; animation: rise 200ms; }

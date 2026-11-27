@@ -32,6 +32,11 @@ The cloud model writes "Dear [NAME_1]…"; you read "Dear Tolu…". The answer c
 
 ## Features
 
+- **Self-check (the device grades itself)**: in Auto, Gemini Nano answers, then scores its own answer (0–100, a constrained JSON reply, on the device). Sure enough → done, no cloud call. Unsure → the Privacy Shield cleans the question *and* the draft, and the cloud model improves it. The device's first answer stays one tap away. There is also a manual **☁ Ask the cloud to improve this** button.
+- **👁 What the cloud saw**: every cloud answer opens a side-by-side X-ray: what you wrote vs. exactly what the cloud received, with the shield's placeholders highlighted.
+- **Route trail + savings meter**: each answer shows the path it took (⚡ Nano 84 ms → 🔍 34% sure → 🛡 hid 1 email → ☁ improved 1.1 s). The footer counts cloud calls avoided and roughly how many tokens never left the device.
+- **Offline mode**: lose your connection and ROOK keeps thinking on the device ("You're offline. Still thinking on your device").
+
 - Chat with streaming answers, multi-turn context (last 8 turns).
 - **Look at my screen**: share a screen or window (Chrome asks first); ROOK takes one picture and explains it.
   Images are sent as JPEG, which Gemini Nano accepts on the device.

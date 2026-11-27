@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CLOUD_MODEL, configured, deviceStatus, findNamesOnDevice, prepareDevice, streamAnswer, summariseOnDevice, type DeviceStatus, type Turn, type Where } from "./ai";
+import { CLOUD_MODEL, configured, deviceStatus, findNamesOnDevice, gradeOnDevice, prepareDevice, streamAnswer, summariseOnDevice, type DeviceStatus, type Turn, type Where } from "./ai";
 import { Markdown } from "./Markdown";
-import { decide, promptFor, type Mode, type Route } from "./router";
+import { decide, improvePrompt, parseGrade, promptFor, shouldEscalate, tokensIn, type Grade, type Mode, type Route } from "./router";
 import { describeCounts, shieldFound, shieldPatterns, unshield, type Shielded } from "./shield";
 import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
@@ -22,9 +22,18 @@ interface Msg {
   pending?: boolean;
   error?: string;
   ms?: number;
+  /** Every step this answer took: where it ran, how long, what the shield did. */
+  trail?: string[];
+  /** Exactly what the cloud received (after the shield), and what you wrote. */
+  cloudSaw?: string;
+  youWrote?: string;
+  /** The device's first answer, when the cloud was asked to improve it. */
+  draft?: string;
+  confidence?: number;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 
 const EXAMPLES = [
   { label: "15% of 84,500", hint: "Instant · no AI" },
@@ -49,6 +58,11 @@ function Badge({ where, route }: { where: Msg["where"]; route?: Route | undefine
   if (where === "device") return <span className="badge badge--device">⚡ On your device · Gemini Nano</span>;
   if (where === "cloud") return <span className="badge badge--cloud">☁ Cloud · {CLOUD_MODEL}{route === "research" ? " + Google Search" : ""}</span>;
   return null;
+}
+
+/** Marks the shield's placeholders in what the cloud received. */
+function highlight(text: string) {
+  return text.split(/(\[[A-Z]+_\d+\])/).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part));
 }
 
 /** One frame of a screen the user picks to share (Chrome asks them first). */
@@ -89,7 +103,22 @@ export function App() {
   const [status, setStatus] = useState<DeviceStatus>("unsupported");
   const [progress, setProgress] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [stats, setStats] = useState({ instant: 0, device: 0, cloud: 0, hidden: 0 });
+  const [stats, setStats] = useState({ instant: 0, device: 0, cloud: 0, hidden: 0, avoided: 0, tokensKept: 0 });
+  // Offline: ROOK keeps thinking on the device.
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    addEventListener("online", up);
+    addEventListener("offline", down);
+    return () => {
+      removeEventListener("online", up);
+      removeEventListener("offline", down);
+    };
+  }, []);
+  /** What each device answer was asked, so "improve in the cloud" can resend it (shielded). */
+  const asked = useRef(new Map<string, { turns: Turn[]; question: string }>());
+  const [xray, setXray] = useState<Record<string, boolean>>({});
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -165,12 +194,110 @@ export function App() {
     }
   };
 
+  /**
+   * Privacy Shield over the user's turns, on the device, before anything reaches the cloud.
+   * `extra` (e.g. the device's draft) is cleaned with the same placeholders.
+   */
+  const shieldTurns = async (turns: Turn[], deviceReady: boolean, extra?: string) => {
+    const out = turns.map((t) => ({ ...t }));
+    let s: Shielded | undefined;
+    if (shieldOn) {
+      for (const t of out) {
+        if (t.role !== "user") continue;
+        s = shieldPatterns(t.text, s);
+        if (deviceReady) {
+          try {
+            s = shieldFound(s, await findNamesOnDevice(s.text));
+          } catch {
+            /* names are a bonus; patterns already ran */
+          }
+        }
+        t.text = s.text;
+      }
+    }
+    let cleanExtra = extra;
+    if (extra != null && shieldOn) {
+      for (const [ph, val] of s?.vault ?? []) cleanExtra = cleanExtra!.split(val).join(ph);
+      s = shieldPatterns(cleanExtra!, s);
+      cleanExtra = s.text;
+    }
+    const what = s ? describeCounts(s.counts) : "";
+    return {
+      turns: out,
+      extra: cleanExtra,
+      vault: s?.vault ?? new Map<string, string>(),
+      hidden: s?.vault.size ?? 0,
+      note: what ? `Hid ${what} on your device before the cloud saw it, and put them back here.` : undefined,
+      what,
+    };
+  };
+
+  /** The cloud improves an answer the device wasn't sure about (shielded first). */
+  const escalate = async (replyId: string, turns: Turn[], draft: string, trail: string[], started: number, why: string) => {
+    const deviceReady = status === "available";
+    const sh = await shieldTurns(turns, deviceReady, draft);
+    const sent: Turn[] = [...sh.turns, { role: "user", text: improvePrompt(sh.extra ?? draft) }];
+    const steps = [...trail, ...(sh.hidden ? [`🛡 Shield hid ${sh.what}`] : []), "☁ Cloud improving…"];
+    if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
+    patch(replyId, {
+      draft,
+      text: "",
+      pending: true,
+      reason: why,
+      trail: steps,
+      youWrote: turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
+      cloudSaw: sent.filter((t) => t.role === "user").slice(-2).map((t) => t.text).join("\n\n"),
+      ...(sh.note ? { shielded: sh.note } : {}),
+    });
+    const ctrl = new AbortController();
+    abort.current = ctrl;
+    setBusy(true);
+    const t0 = performance.now();
+    try {
+      const res = await streamAnswer("cloud", sent, (soFar) => patch(replyId, { text: unshield(soFar, sh.vault) }), ctrl.signal);
+      patch(replyId, {
+        text: unshield(res.text, sh.vault),
+        where: res.where,
+        pending: false,
+        ms: Math.round(performance.now() - started),
+        trail: [...steps.slice(0, -1), `☁ Cloud improved · ${fmtMs(performance.now() - t0)}`],
+      });
+      setStats((s) => ({ ...s, [res.where]: s[res.where] + 1 }));
+    } catch (e) {
+      // The draft is still good to read: show it rather than an empty error.
+      patch(replyId, {
+        text: draft,
+        where: "device",
+        pending: false,
+        trail: [...steps.slice(0, -1), "☁ Cloud unavailable → kept the device's answer"],
+        error: ctrl.signal.aborted ? undefined : `Couldn't improve it in the cloud (${friendly(e)}). Showing the on-device answer.`,
+      });
+    } finally {
+      setBusy(false);
+      abort.current = null;
+    }
+  };
+
+  /** "Ask the cloud to improve this": the same path the self-check takes, on request. */
+  const improve = async (m: Msg) => {
+    const ctx = asked.current.get(m.id);
+    if (!ctx || busy || !online) return;
+    setStats((s) => ({ ...s, avoided: Math.max(0, s.avoided - 1), tokensKept: Math.max(0, s.tokensKept - tokensIn(ctx.question + m.text)) }));
+    await escalate(m.id, ctx.turns, m.text, m.trail ?? [], performance.now(), "You asked the cloud to improve the on-device answer");
+  };
+
   const send = useCallback(
     async (raw?: string) => {
       const text = (raw ?? input).trim();
       if ((!text && !image) || busy) return;
       const deviceReady = status === "available";
       const d = decide(text, { mode, hasImage: Boolean(image), deviceReady });
+      // Offline: nothing can reach the cloud, so ROOK keeps thinking on the device.
+      if (!online && d.route !== "instant" && !d.deviceOnly) {
+        d.deviceOnly = true;
+        d.route = "device";
+        d.reason = "You're offline → answering on your device";
+      }
       const user: Msg = { id: uid(), role: "user", text, ...(image ? { image } : {}) };
       const reply: Msg = { id: uid(), role: "rook", text: "", route: d.route, reason: d.reason, pending: true };
       setMsgs((list) => [...list, user, reply]);
@@ -179,15 +306,17 @@ export function App() {
       const started = performance.now();
 
       if (d.route === "instant") {
-        patch(reply.id, { text: d.answer ?? "", where: "instant", pending: false, ms: Math.round(performance.now() - started) });
-        setStats((s) => ({ ...s, instant: s.instant + 1 }));
+        const ms = Math.round(performance.now() - started);
+        patch(reply.id, { text: d.answer ?? "", where: "instant", pending: false, ms, trail: [`◆ Calculated in the browser · ${fmtMs(ms)}`, "No AI needed"] });
+        setStats((s) => ({ ...s, instant: s.instant + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + (d.answer ?? "")) }));
         return;
       }
       if (d.deviceOnly && !deviceReady) {
         patch(reply.id, {
           pending: false,
-          error:
-            status === "unsupported"
+          error: !online
+            ? "You're offline, and this browser doesn't have the on-device model (Gemini Nano) to keep thinking without internet. Calculations still work. Reconnect to use the cloud."
+            : status === "unsupported"
               ? "Private mode needs Chrome's on-device model (Gemini Nano), which this browser doesn't have. Nothing was sent anywhere."
               : "Private mode needs the on-device model. Tap “Get on-device model” above first. Nothing was sent anywhere.",
         });
@@ -195,41 +324,72 @@ export function App() {
       }
 
       // The conversation so far (last 8 turns), with this message last.
-      const history: Turn[] = [...msgs, user]
+      const turns: Turn[] = [...msgs, user]
         .filter((m) => !m.error && !m.pending && (m.text || m.image))
         .slice(-8)
         .map((m) => ({ role: m.role === "user" ? "user" : "model", text: m.role === "user" ? promptFor(m.text) : m.text, ...(m.image ? { image: m.image } : {}) }));
 
-      // Privacy Shield: anything that may reach the cloud is cleaned on the device first.
-      const mayGoToCloud = d.route === "cloud" || d.route === "research" || (d.route === "device" && !d.deviceOnly && !deviceReady);
-      let vault: Shielded["vault"] = new Map();
-      let shieldNote: string | undefined;
-      if (shieldOn && mayGoToCloud) {
-        let s: Shielded | undefined;
-        for (const t of history) {
-          if (t.role !== "user") continue;
-          s = shieldPatterns(t.text, s);
-          if (deviceReady) {
-            try {
-              s = shieldFound(s, await findNamesOnDevice(s.text));
-            } catch {
-              /* names are a bonus; patterns already ran */
-            }
+      // Self-check: in Auto, the device answers, grades itself, and calls in the cloud only when unsure.
+      const selfCheck = mode === "auto" && d.route === "device" && !d.deviceOnly && deviceReady && online;
+      if (selfCheck || d.deviceOnly) {
+        const ctrl = new AbortController();
+        abort.current = ctrl;
+        setBusy(true);
+        let draft = "";
+        let trail: string[] = [];
+        try {
+          const res = await streamAnswer("device", turns, (soFar) => patch(reply.id, { text: soFar }), ctrl.signal);
+          draft = res.text;
+          const nanoMs = performance.now() - started;
+          trail = [`⚡ Gemini Nano answered · ${fmtMs(nanoMs)}`];
+          if (!selfCheck) {
+            trail.push(online ? "🔒 Private: never left this device" : "📴 Offline: never left this device");
+            patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(nanoMs), trail });
+            setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
+            return;
           }
-          t.text = s.text;
-        }
-        if (s) {
-          vault = s.vault;
-          const what = describeCounts(s.counts);
-          if (what) {
-            shieldNote = `Hid ${what} on your device before the cloud saw it, and put them back here.`;
-            setStats((st) => ({ ...st, hidden: st.hidden + s!.vault.size }));
+          patch(reply.id, { text: draft, where: "device", trail: [...trail, "🔍 Checking its own answer…"] });
+          let grade: Grade;
+          try {
+            grade = parseGrade(await gradeOnDevice(text, draft));
+          } catch {
+            grade = { confidence: 70, needsCloud: false, reason: "" };
+          }
+          trail.push(`🔍 Self-check: ${grade.confidence}% sure${grade.reason ? ` (${grade.reason})` : ""}`);
+          asked.current.set(reply.id, { turns, question: text });
+          if (shouldEscalate(grade, { online, deviceOnly: false })) {
+            setBusy(false);
+            abort.current = null;
+            await escalate(reply.id, turns, draft, trail, started, `The device was only ${grade.confidence}% sure → asked the cloud to improve it`);
+            return;
+          }
+          trail.push("✓ Good enough: the cloud wasn't needed");
+          patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(performance.now() - started), trail, confidence: grade.confidence });
+          setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
+        } catch (e) {
+          if (ctrl.signal.aborted) patch(reply.id, { pending: false, error: "Stopped.", ...(draft ? { text: draft } : {}) });
+          else patch(reply.id, { pending: false, error: friendly(e) });
+        } finally {
+          if (abort.current === ctrl) {
+            setBusy(false);
+            abort.current = null;
           }
         }
+        return;
       }
-      if (shieldNote) patch(reply.id, { shielded: shieldNote });
 
-      const which = d.route === "research" ? "research" : d.route === "cloud" ? "cloud" : d.deviceOnly ? "device" : "hybrid";
+      // Privacy Shield: anything that may reach the cloud is cleaned on the device first.
+      const sh = await shieldTurns(turns, deviceReady);
+      const vault = sh.vault;
+      if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
+      const steps: string[] = [...(sh.hidden ? [`🛡 Shield hid ${sh.what}`] : [])];
+      patch(reply.id, {
+        ...(sh.note ? { shielded: sh.note } : {}),
+        youWrote: promptFor(text),
+        cloudSaw: sh.turns.at(-1)?.text ?? "",
+      });
+
+      const which = d.route === "research" ? "research" : d.route === "cloud" ? "cloud" : "hybrid";
       const ctrl = new AbortController();
       abort.current = ctrl;
       setBusy(true);
@@ -237,28 +397,40 @@ export function App() {
         const onText = (soFar: string) => patch(reply.id, { text: unshield(soFar, vault) });
         let res;
         try {
-          res = await streamAnswer(which, history, onText, ctrl.signal);
+          res = await streamAnswer(which, sh.turns, onText, ctrl.signal);
         } catch (e) {
           // Live web search unavailable (e.g. no Google Search quota on the free plan): answer from the cloud model, and say so.
           if (which !== "research" || ctrl.signal.aborted) throw e;
           patch(reply.id, { route: "cloud", reason: "Live web search isn't available right now → cloud model without search (no sources)" });
-          res = await streamAnswer("cloud", history, onText, ctrl.signal);
+          res = await streamAnswer("cloud", sh.turns, onText, ctrl.signal);
         }
         const final = unshield(res.text, vault);
+        const ms = performance.now() - started;
+        steps.push(
+          res.where === "device"
+            ? `⚡ Gemini Nano answered · ${fmtMs(ms)}`
+            : `☁ ${res.sources.length ? `Cloud + Google Search (${res.sources.length} sources)` : "Cloud"} · ${fmtMs(ms)}`,
+        );
         patch(reply.id, {
           text: final,
           where: res.where,
           pending: false,
-          ms: Math.round(performance.now() - started),
+          ms: Math.round(ms),
+          trail: steps,
+          ...(res.where === "device" ? { cloudSaw: undefined, youWrote: undefined } : {}),
           ...(res.sources.length ? { sources: res.sources } : {}),
           ...(res.searchEntry ? { searchEntry: res.searchEntry } : {}),
         });
-        setStats((s) => ({ ...s, [res.where]: s[res.where] + 1 }));
+        setStats((s) => ({
+          ...s,
+          [res.where]: s[res.where] + 1,
+          ...(res.where === "device" ? { avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + final) } : {}),
+        }));
         // Research: the cloud did the searching; the device writes the short summary card.
         if (d.route === "research" && deviceReady && final.length > 400) {
           try {
             const summary = await summariseOnDevice(final);
-            patch(reply.id, { summary, summaryWhere: "device" });
+            patch(reply.id, { summary, summaryWhere: "device", trail: [...steps, "⚡ Summary card written on your device"] });
             setStats((s) => ({ ...s, device: s.device + 1 }));
           } catch {
             /* the full answer is already there */
@@ -272,7 +444,7 @@ export function App() {
         abort.current = null;
       }
     },
-    [input, image, busy, status, mode, msgs, shieldOn],
+    [input, image, busy, status, mode, msgs, shieldOn, online], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!configured) return <Setup />;
@@ -365,6 +537,12 @@ export function App() {
         </div>
       )}
 
+      {!online && (
+        <div className="offline" role="status">
+          📴 You're offline. {status === "available" ? "Still thinking on your device with Gemini Nano." : "Calculations still work; answers need the on-device model or a connection."}
+        </div>
+      )}
+
       <main className="workspace">
         {msgs.length === 0 ? (
           <section className="hero">
@@ -395,12 +573,53 @@ export function App() {
                 <article key={m.id} className={`msg msg--rook ${m.pending ? "msg--pending" : ""}`}>
                   <div className="msg__head">
                     <Mark size={20} />
-                    {m.where ? <Badge where={m.where} route={m.route} /> : <span className="badge badge--wait">Thinking…</span>}
+                    {m.where ? <Badge where={m.where} route={m.route} /> : m.pending ? <span className="badge badge--wait">Thinking…</span> : null}
                     {m.ms != null && <span className="msg__ms">{m.ms < 1000 ? `${m.ms} ms` : `${(m.ms / 1000).toFixed(1)} s`}</span>}
                   </div>
                   {m.reason && <p className="msg__why">{m.reason}</p>}
                   {m.shielded && <p className="msg__shield">🛡 {m.shielded}</p>}
-                  {m.error ? <p className="msg__error">{m.error}</p> : <Markdown text={m.text || (m.pending ? "…" : "")} />}
+                  {m.error && <p className="msg__error">{m.error}</p>}
+                  {(!m.error || m.text) && <Markdown text={m.text || (m.pending ? "…" : "")} />}
+                  {m.trail && m.trail.length > 0 && (
+                    <ol className="trail" aria-label="How ROOK answered">
+                      {m.trail.map((step, i) => (
+                        <li key={i}>{step}</li>
+                      ))}
+                    </ol>
+                  )}
+                  {!m.pending && (m.draft || m.cloudSaw != null || (m.where === "device" && asked.current.has(m.id))) && (
+                    <div className="msg__tools">
+                      {m.cloudSaw != null && (
+                        <button className={`mini ${xray[m.id] ? "on" : ""}`} aria-expanded={Boolean(xray[m.id])} onClick={() => setXray((x) => ({ ...x, [m.id]: !x[m.id] }))}>
+                          👁 What the cloud saw
+                        </button>
+                      )}
+                      {m.draft && (
+                        <details className="draft">
+                          <summary>⚡ The device's first answer</summary>
+                          <Markdown text={m.draft} />
+                        </details>
+                      )}
+                      {m.where === "device" && !m.draft && asked.current.has(m.id) && (
+                        <button className="mini" disabled={busy || !online} onClick={() => void improve(m)} title={online ? "The shield cleans it on your device first" : "You're offline"}>
+                          ☁ Ask the cloud to improve this
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {m.cloudSaw != null && xray[m.id] && (
+                    <div className="xray">
+                      <section>
+                        <h4>You wrote</h4>
+                        <pre>{m.youWrote}</pre>
+                      </section>
+                      <section>
+                        <h4>The cloud received</h4>
+                        <pre>{highlight(m.cloudSaw)}</pre>
+                      </section>
+                      <p className="xray__note">🔒 Real details stayed on this device and were put back into the answer here.{m.draft ? " The cloud also got the device's draft (shielded the same way) to improve." : ""}</p>
+                    </div>
+                  )}
                   {(m.summary || m.sources) && (
                     <div className="cards">
                       {m.summary && (
@@ -440,6 +659,11 @@ export function App() {
           <span>⚡ {stats.device} on device</span>
           <span>☁ {stats.cloud} cloud</span>
           <span>🛡 {stats.hidden} details kept private</span>
+          {stats.avoided > 0 && (
+            <span className="stats__saved" title="Questions answered without any cloud call. Rough tokens: about 4 characters each.">
+              💚 {stats.avoided} cloud call{stats.avoided === 1 ? "" : "s"} avoided · ≈{stats.tokensKept.toLocaleString()} tokens never left this device
+            </span>
+          )}
         </div>
         <form
           className="composer"

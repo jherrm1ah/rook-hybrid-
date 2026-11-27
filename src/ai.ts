@@ -188,3 +188,29 @@ export async function summariseOnDevice(text: string): Promise<string> {
   const res = await m.device.generateContent(`Summarise this in at most 3 short bullet points, plain text, each starting with "• ":\n\n${text.slice(0, 5000)}`);
   return res.response.text().trim();
 }
+
+/**
+ * Self-check, on the device only: Gemini Nano grades its own answer (JSON, constrained),
+ * so ROOK knows when to bring in the cloud. Never leaves the device.
+ */
+export async function gradeOnDevice(question: string, answer: string): Promise<string> {
+  const m = setup();
+  if (!m || !app) throw new Error("not configured");
+  const schema = {
+    type: "object",
+    properties: { confidence: { type: "integer", minimum: 0, maximum: 100 }, needs_cloud: { type: "boolean" }, reason: { type: "string" } },
+    required: ["confidence", "needs_cloud", "reason"],
+  };
+  const grader = getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), {
+    mode: InferenceMode.ONLY_ON_DEVICE,
+    onDeviceParams: { promptOptions: { responseConstraint: schema } },
+  });
+  const res = await grader.generateContent(
+    "You are checking an answer written by a small on-device AI model. Be strict and honest.\n" +
+      "Score 0-100 how likely the answer is correct, complete and genuinely helpful. Score LOW and set needs_cloud=true if the question needs " +
+      "up-to-date facts, specialist expertise (legal, medical, financial), multi-step reasoning or maths beyond simple arithmetic, long or " +
+      "detailed writing, or if the answer is vague, generic, possibly wrong or cut short. Give a short reason.\n\n" +
+      `Question:\n"""\n${question.slice(0, 2000)}\n"""\n\nAnswer:\n"""\n${answer.slice(0, 3000)}\n"""`,
+  );
+  return res.response.text();
+}

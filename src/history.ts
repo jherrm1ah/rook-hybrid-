@@ -19,6 +19,11 @@ export interface SavedMessage {
   summary?: string;
   error?: string;
   ms?: number;
+  trail?: string[];
+  cloudSaw?: string;
+  youWrote?: string;
+  draft?: string;
+  confidence?: number;
 }
 
 export interface Conversation {
