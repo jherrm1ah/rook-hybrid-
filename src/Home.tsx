@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { IconCamera, IconCapture, IconChevronRight, IconLive, IconMic, IconSpark } from "./Icons";
-import { RookBird } from "./rook/RookBird";
+import { RookBird, RookLabel } from "./rook/RookBird";
 
 function greeting(d = new Date()) {
   const h = d.getHours();
@@ -26,7 +26,11 @@ export function Home({
   onRecord,
   onFollow,
   onExample,
+  lookMenu,
+  catching,
 }: {
+  lookMenu: ReactNode;
+  catching: boolean;
   project?: string | undefined;
   recording: boolean;
   following: boolean;
@@ -42,7 +46,10 @@ export function Home({
   return (
     <div className="home">
       <header className="hero spring">
-        <RookBird behavior="watching" size={44} showAura={false} />
+        <div className="hero__rook">
+          <RookBird behavior={catching ? "catching" : "watching"} size={44} showAura={false} />
+          {catching && <RookLabel verb="Catching" />}
+        </div>
         <p className="hero__eyebrow">
           {greeting()}
           {project ? ` · ${project}` : ""}
@@ -61,15 +68,18 @@ export function Home({
             <span className="tile__hint">Questions, writing, code, anything</span>
           </span>
         </button>
-        <button className="tile spring" style={i(2)} onClick={onLook}>
-          <span className="tile__icon">
-            <IconCapture size={18} />
-          </span>
-          <span className="tile__body">
-            <span className="tile__label">Look</span>
-            <span className="tile__hint">Screen or window</span>
-          </span>
-        </button>
+        <div className="tile-wrap spring" style={i(2)}>
+          <button className={`tile ${lookMenu ? "tile--open" : ""}`} aria-haspopup="menu" aria-expanded={Boolean(lookMenu)} onClick={onLook}>
+            <span className="tile__icon">
+              <IconCapture size={18} />
+            </span>
+            <span className="tile__body">
+              <span className="tile__label">Look</span>
+              <span className="tile__hint">Screen, window, region</span>
+            </span>
+          </button>
+          {lookMenu}
+        </div>
         <button className="tile spring" style={i(3)} onClick={onScan}>
           <span className="tile__icon">
             <IconCamera size={18} />

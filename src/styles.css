@@ -559,3 +559,53 @@ button:disabled { cursor: default; opacity: 0.5; }
   .picker__label { max-width: none; overflow: visible; }
   .picker__btn { font-size: 13.5px; padding: 0 8px; gap: 4px; }
 }
+
+/* Look, as on the desktop: menu, ROOK IS CATCHING, a white scan line, the "Screen" tray label */
+.hero__rook { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.hero .rooklabel__who { color: rgba(255, 255, 255, 0.5); }
+.hero .rooklabel__verb { color: #fff; }
+.tile-wrap { position: relative; display: grid; z-index: 4; }
+.tile-wrap > .tile { width: 100%; }
+.tile--open { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.lookwrap { position: relative; }
+.lookmenu {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 35; width: 250px; padding: 6px; border-radius: 18px;
+  background: #0d0d0f; color: #fff; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); animation: rise 160ms ease;
+}
+.lookmenu--up { top: auto; bottom: calc(100% + 10px); }
+.lookmenu__item { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; text-align: left; }
+.lookmenu__item:hover { background: rgba(255, 255, 255, 0.1); }
+.lookmenu__item svg { flex-shrink: 0; color: rgba(255, 255, 255, 0.85); }
+.lookmenu__item span { display: flex; flex-direction: column; }
+.lookmenu__item strong { font-size: 14.5px; font-weight: 650; }
+.lookmenu__item small { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+@media (max-width: 640px) { .bento .tile-wrap .lookmenu { width: min(250px, 80vw); } }
+
+.attach img { height: 72px; }
+.attach__label { position: absolute; left: 6px; bottom: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(13, 13, 15, 0.78); color: #fff; font-size: 11px; font-weight: 650; }
+
+.lookflash { background: rgba(28, 29, 38, 0.88); }
+.lookflash__frame { box-shadow: 0 0 0 2px #0d0d0f, 0 0 0 3px rgba(255, 255, 255, 0.18), 0 24px 60px rgba(0, 0, 0, 0.45); }
+.lookflash__line { background: #fff; box-shadow: 0 0 0 1px rgba(13, 13, 15, 0.45), 0 0 10px rgba(255, 255, 255, 0.6); }
+.lookflash__band { background: rgba(255, 255, 255, 0.12); }
+.lookflash__label { color: #fff; }
+
+/* Select region */
+.scrim--crop { padding: 12px; }
+.crop { width: min(1100px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 22px; background: #0d0d0f; color: #fff; }
+.crop__head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; padding: 2px 4px; }
+.crop__area { display: grid; place-items: center; min-height: 0; }
+.crop__stage { position: relative; display: inline-block; cursor: crosshair; user-select: none; touch-action: none; border-radius: 10px; overflow: hidden; line-height: 0; }
+.crop__stage img { display: block; max-width: 100%; max-height: calc(100vh - 150px); pointer-events: none; }
+.crop__stage--sel img { filter: brightness(0.5); }
+.crop__sel { position: absolute; border: 2px solid #fff; border-radius: 4px; backdrop-filter: brightness(2); pointer-events: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5); }
+.crop__foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.crop__foot .ghost { color: rgba(255, 255, 255, 0.75); }
+.crop__foot .ghost:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.crop__foot .primary { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: #0d0d0f; }
+.crop__foot .primary:disabled { opacity: 0.45; }
+@media (max-width: 640px) {
+  .lookmenu--sheet { position: fixed; top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; z-index: 61; padding: 8px; border-radius: 22px; animation: rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .lookmenu-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(21, 21, 29, 0.35); }
+  .lookmenu__item { padding: 13px 14px; }
+}

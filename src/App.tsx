@@ -10,6 +10,8 @@ import { Onboarding, onboarded } from "./Onboarding";
 import { IconArrowUp, IconCapture, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
 import { Home, type Example } from "./Home";
 import { Camera } from "./Camera";
+import { CropModal, crop } from "./CropModal";
+import { LookMenu, type LookKind } from "./LookMenu";
 import { Picker } from "./Pickers";
 import { ProjectsPanel } from "./ProjectsPanel";
 import * as projects from "./projects";
@@ -96,8 +98,9 @@ function highlight(text: string) {
 }
 
 /** One frame of a screen the user picks to share (Chrome asks them first). */
-async function captureScreen(): Promise<Turn["image"]> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+async function captureScreen(surface?: "monitor" | "window"): Promise<Turn["image"]> {
+  // Chrome's own picker still decides; this only pre-selects the right tab of it.
+  const stream = await navigator.mediaDevices.getDisplayMedia({ video: (surface ? { displaySurface: surface } : true) as MediaTrackConstraints, audio: false });
   try {
     const video = document.createElement("video");
     video.srcObject = stream;
@@ -156,17 +159,29 @@ export function App() {
   const [copied, setCopied] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const stopListening = useRef<(() => void) | null>(null);
-  const attach = (img: Turn["image"]) => {
+  const [imageLabel, setImageLabel] = useState("");
+  const attach = (img: Turn["image"], label = "Image") => {
     setImage(img);
+    setImageLabel(label);
     setFlash(img);
   };
-  const look = () =>
-    void captureScreen()
+  // Look, as on the desktop: full screen, a window, or a region you drag. ROOK IS CATCHING while it captures.
+  const [lookMenu, setLookMenu] = useState<null | "home" | "composer">(null);
+  const [catching, setCatching] = useState(false);
+  const [cropping, setCropping] = useState<Turn["image"]>();
+  const lookPrompt = () => setInput((t) => t || "Explain what's on my screen and what I should do next.");
+  const look = (kind: LookKind = "screen") => {
+    setLookMenu(null);
+    setCatching(true);
+    void captureScreen(kind === "window" ? "window" : "monitor")
       .then((img) => {
-        attach(img);
-        setInput((t) => t || "Explain what's on my screen and what I should do next.");
+        if (kind === "region") return setCropping(img);
+        attach(img, kind === "window" ? "Window" : "Screen");
+        lookPrompt();
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setCatching(false));
+  };
   const mic = async () => {
     if (listening) {
       stopListening.current?.();
@@ -792,7 +807,9 @@ export function App() {
             following={Boolean(follow)}
             examples={EXAMPLES}
             onAsk={() => textarea.current?.focus()}
-            onLook={look}
+            onLook={() => setLookMenu((m) => (m === "home" ? null : "home"))}
+            lookMenu={lookMenu === "home" ? <LookMenu onPick={look} onClose={() => setLookMenu(null)} /> : null}
+            catching={catching}
             onScan={() => setCamera(true)}
             onRecord={toggleRecord}
             onFollow={() => void startFollow()}
@@ -980,6 +997,7 @@ export function App() {
           {image && (
             <div className="attach">
               <img src={`data:${image.mimeType};base64,${image.data}`} alt="" />
+              {imageLabel && <span className="attach__label">{imageLabel}</span>}
               <button type="button" aria-label="Remove image" onClick={() => setImage(undefined)}>
                 ×
               </button>
@@ -1001,21 +1019,32 @@ export function App() {
               const f = [...e.clipboardData.files].find((x) => x.type.startsWith("image/"));
               if (f) {
                 e.preventDefault();
-                void fileToJpeg(f).then(attach);
+                void fileToJpeg(f).then((img) => attach(img, "Image"));
               }
             }}
           />
           <div className="composer__row">
-            <button type="button" className="iconbtn" title="Look: share a screen or window" aria-label="Look" onClick={look}>
-              <IconCapture size={17} />
-            </button>
+            <div className="lookwrap">
+              <button
+                type="button"
+                className={`iconbtn ${lookMenu === "composer" ? "on" : ""}`}
+                title="Look: your screen, a window, or a region"
+                aria-label="Look"
+                aria-haspopup="menu"
+                aria-expanded={lookMenu === "composer"}
+                onClick={() => setLookMenu((m) => (m === "composer" ? null : "composer"))}
+              >
+                <IconCapture size={17} />
+              </button>
+              {lookMenu === "composer" && <LookMenu up onPick={look} onClose={() => setLookMenu(null)} />}
+            </div>
             <button type="button" className="iconbtn" title="Add a picture" aria-label="Add a picture" onClick={() => fileInput.current?.click()}>
               <IconPlus size={17} />
             </button>
             <button type="button" className={`iconbtn ${web ? "on" : ""}`} aria-pressed={web} title={web ? "Web research: on" : "Research on the web"} aria-label="Web research" onClick={() => setWeb((v) => !v)}>
               <IconGlobe size={17} />
             </button>
-            <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then(attach)} />
+            <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then((img) => attach(img, "Image"))} />
             <Picker
               icon={<IconFolder size={15} />}
               label={project?.name ?? "No project"}
@@ -1065,14 +1094,28 @@ export function App() {
           onClose={() => setCamera(false)}
           onShot={(img) => {
             setCamera(false);
-            attach(img);
+            attach(img, "Photo");
             setInput((t) => t || "What is this? Tell me what I should know or do.");
             textarea.current?.focus();
           }}
         />
       )}
       {flash && <LookFlash image={flash} onDone={() => setFlash(undefined)} />}
-      {tour && <Onboarding onLook={look} onDone={() => setTour(false)} />}
+      {tour && <Onboarding onLook={() => look("screen")} onDone={() => setTour(false)} />}
+      {cropping && (
+        <CropModal
+          image={cropping}
+          onCancel={() => setCropping(undefined)}
+          onDone={(r) => {
+            const img = cropping;
+            setCropping(undefined);
+            void crop(img, r).then((part) => {
+              attach(part, r.w >= 0.99 && r.h >= 0.99 ? "Screen" : "Region");
+              lookPrompt();
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
