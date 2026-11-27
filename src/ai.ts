@@ -214,3 +214,22 @@ export async function gradeOnDevice(question: string, answer: string): Promise<s
   );
   return res.response.text();
 }
+
+/** On device only: three short follow-up questions for an answer (JSON, constrained). */
+export async function followUpsOnDevice(question: string, answer: string): Promise<string[]> {
+  if (!setup() || !app) return [];
+  const schema = { type: "object", properties: { questions: { type: "array", items: { type: "string" } } }, required: ["questions"] };
+  const m = getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), {
+    mode: InferenceMode.ONLY_ON_DEVICE,
+    onDeviceParams: { promptOptions: { responseConstraint: schema } },
+  });
+  const res = await m.generateContent(
+    `Suggest exactly 3 short follow-up questions (under 10 words each) the user might ask next.\nQuestion:\n"""\n${question.slice(0, 1500)}\n"""\nAnswer:\n"""\n${answer.slice(0, 3000)}\n"""`,
+  );
+  try {
+    const q = (JSON.parse(res.response.text()) as { questions?: unknown }).questions;
+    return Array.isArray(q) ? q.filter((x): x is string => typeof x === "string" && x.trim().length > 3).map((x) => x.trim()).slice(0, 3) : [];
+  } catch {
+    return [];
+  }
+}

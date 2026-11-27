@@ -58,6 +58,37 @@ export function Markdown({ text }: { text: string }) {
       );
       continue;
     }
+    // Tables: | a | b | rows, with a |---| separator line.
+    if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] ?? "")) {
+      const cells = (row: string) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const head = cells(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]!)) rows.push(cells(lines[i++]!));
+      blocks.push(
+        <div key={k++} className="md__table">
+          <table>
+            <thead>
+              <tr>
+                {head.map((c, j) => (
+                  <th key={j}>{inline(c)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={ri}>
+                  {r.map((c, j) => (
+                    <td key={j}>{inline(c)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
     const h = line.match(/^(#{1,4})\s+(.*)$/);
     if (h) {
       blocks.push(<h3 key={k++}>{inline(h[2]!)}</h3>);
@@ -68,8 +99,8 @@ export function Markdown({ text }: { text: string }) {
       i++;
       continue;
     }
-    const para: string[] = [];
-    while (i < lines.length && lines[i]!.trim() && !/^(```|#{1,4}\s|\s*([-*•]|\d+\.)\s)/.test(lines[i]!)) para.push(lines[i++]!);
+    const para: string[] = [lines[i++]!];
+    while (i < lines.length && lines[i]!.trim() && !/^(```|#{1,4}\s|\s*([-*•]|\d+\.)\s|\s*\|)/.test(lines[i]!)) para.push(lines[i++]!);
     blocks.push(<p key={k++}>{inline(para.join(" "))}</p>);
   }
   return <div className="md">{blocks}</div>;

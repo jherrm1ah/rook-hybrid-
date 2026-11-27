@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CLOUD_MODEL, configured, deviceStatus, findNamesOnDevice, gradeOnDevice, prepareDevice, streamAnswer, summariseOnDevice, type DeviceStatus, type Turn, type Where } from "./ai";
+import { CLOUD_MODEL, configured, deviceStatus, findNamesOnDevice, followUpsOnDevice, gradeOnDevice, prepareDevice, streamAnswer, summariseOnDevice, type DeviceStatus, type Turn, type Where } from "./ai";
 import { Markdown } from "./Markdown";
 import { decide, improvePrompt, parseGrade, promptFor, shouldEscalate, tokensIn, type Grade, type Mode, type Route } from "./router";
 import { describeCounts, shieldFound, shieldPatterns, unshield, type Shielded } from "./shield";
@@ -7,7 +7,12 @@ import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
 import { LookFlash, RookBird, RookLabel } from "./rook/RookBird";
 import { Onboarding, onboarded } from "./Onboarding";
-import { IconArrowUp, IconCapture, IconCheck, IconCopy, IconGlobe, IconHistory, IconMic, IconPlus, IconStop } from "./Icons";
+import { IconArrowUp, IconCapture, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
+import { Home, type Example } from "./Home";
+import { Camera } from "./Camera";
+import { Picker } from "./Pickers";
+import { ProjectsPanel } from "./ProjectsPanel";
+import * as projects from "./projects";
 import { canListen, listen } from "./voice";
 
 interface Msg {
@@ -38,6 +43,10 @@ interface Msg {
   note?: string;
   /** What ROOK is doing right now (drives the living bird while it works). */
   stage?: Stage;
+  /** Short label shown instead of a long prompt (e.g. a voice note), with the full text one tap away. */
+  label?: string;
+  /** Follow-up questions, suggested on the device. */
+  followups?: string[];
 }
 
 type Stage = "looking" | "thinking" | "drafting" | "checking" | "guarding" | "seeking" | "gathering";
@@ -46,15 +55,22 @@ const VERB: Record<Stage, string> = { looking: "Looking", thinking: "Thinking", 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 
-const EXAMPLES = [
-  { label: "15% of 84,500", hint: "Instant. No AI needed." },
-  { label: "Rewrite this to sound friendlier: send me the invoice today", hint: "Answered on your device" },
+const EXAMPLES: Example[] = [
+  { label: "Work out 15% of 84,500", prompt: "15% of 84,500", hint: "Instant. No AI needed.", icon: <IconZap size={16} /> },
+  { label: "Make a message friendlier", prompt: "Rewrite this to sound friendlier: send me the invoice today", hint: "Answered on your device", icon: <IconEdit size={16} /> },
   {
-    label: "Tolu Adeyemi (tolu.adeyemi@gmail.com) asks what VAT rate to charge on invoices in Nigeria. Draft my reply.",
-    hint: "Device unsure, cloud improves it. Then tap What the cloud saw.",
+    label: "Draft a reply about VAT",
+    prompt: "Tolu Adeyemi (tolu.adeyemi@gmail.com) asks what VAT rate to charge on invoices in Nigeria. Draft my reply.",
+    hint: "The device is unsure, so the cloud improves it. Then tap What the cloud saw.",
+    icon: <IconShield size={16} />,
   },
-  { label: "/research latest Firebase AI Logic hybrid inference features", hint: "Cloud with Google Search" },
+  { label: "Research Firebase hybrid AI", prompt: "/research latest Firebase AI Logic hybrid inference features", hint: "Cloud with Google Search", icon: <IconGlobe size={16} /> },
 ];
+
+const RESEARCH_FORMAT = "\n\nFormat the answer in Markdown with these headings: ### Overview, ### Key findings, ### Comparison (only if it helps), ### Recommendations.";
+const FOLLOW_HINT = "\n\n(I'm sharing my screen with you. Tell me exactly what to click or type, step by step; I'll do it myself.)";
+const RECORD_PROMPT =
+  "Here is the transcript of a voice note or meeting I recorded. Turn it into clear notes: a two-line summary, the key points, and action items (with who and when, if mentioned).\n\nTranscript:\n";
 
 function Mark({ size = 28 }: { size?: number }) {
   return (
@@ -171,6 +187,116 @@ export function App() {
       setListening(false);
       alert((e as Error).message);
     }
+  };
+  // Projects (on this device only)
+  const kv = typeof localStorage !== "undefined" ? localStorage : null;
+  const [projectList, setProjectList] = useState<projects.Project[]>(() => (kv ? projects.load(kv) : []));
+  const [projectId, setProjectId] = useState<string | null>(() => (kv ? projects.currentId(kv) : null));
+  const [projPanel, setProjPanel] = useState(false);
+  const project = projectList.find((p) => p.id === projectId);
+  const pickProject = (id: string | null) => {
+    setProjectId(id);
+    if (store) projects.setCurrent(store, id);
+  };
+  // Scan
+  const [camera, setCamera] = useState(false);
+  // Follow: a shared screen ROOK looks at with each question
+  const [follow, setFollow] = useState<MediaStream | null>(null);
+  const followVideo = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    if (followVideo.current && follow) {
+      followVideo.current.srcObject = follow;
+      void followVideo.current.play().catch(() => undefined);
+    }
+  }, [follow]);
+  const stopFollow = () => {
+    follow?.getTracks().forEach((t) => t.stop());
+    setFollow(null);
+  };
+  const startFollow = async () => {
+    if (follow) return stopFollow();
+    try {
+      const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      s.getVideoTracks()[0]?.addEventListener("ended", () => setFollow(null));
+      setFollow(s);
+      setInput((t) => t || "What should I do next here?");
+      textarea.current?.focus();
+    } catch {
+      /* the user cancelled the share */
+    }
+  };
+  const frame = (): Turn["image"] | undefined => {
+    const v = followVideo.current;
+    return v && v.videoWidth ? toJpeg(v, v.videoWidth, v.videoHeight) : undefined;
+  };
+  // Record: speech to text on the device when Chrome can, then ROOK writes the notes
+  const [rec, setRec] = useState<{ started: number; text: string } | null>(null);
+  const recText = useRef("");
+  const recWant = useRef(false);
+  const recLive = useRef(false);
+  const recStop = useRef<(() => void) | null>(null);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!rec) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [rec]);
+  const finishRec = (started: number) => {
+    if (!recLive.current) return;
+    recLive.current = false;
+    recWant.current = false;
+    setRec(null);
+    const text = recText.current.trim();
+    if (!text) return alert("ROOK didn't hear anything. Check the microphone and try again.");
+    const secs = Math.round((Date.now() - started) / 1000);
+    void sendRef.current(`${RECORD_PROMPT}"""\n${text}\n"""`, { label: `Voice note · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}` });
+  };
+  const runRec = async (started: number) => {
+    const base = recText.current ? `${recText.current} ` : "";
+    try {
+      recStop.current = await listen(
+        (heard) => {
+          recText.current = (base + heard).trim();
+          setRec({ started, text: recText.current });
+        },
+        (err) => {
+          if (err) {
+            recWant.current = false;
+            alert(err);
+          }
+          // Chrome stops listening after long pauses: carry on until the user presses Stop.
+          if (recWant.current) void runRec(started);
+          else finishRec(started);
+        },
+      );
+    } catch (e) {
+      recWant.current = false;
+      finishRec(started);
+      alert((e as Error).message);
+    }
+  };
+  const toggleRecord = () => {
+    if (rec) {
+      recWant.current = false;
+      recStop.current?.();
+      return;
+    }
+    if (!canListen()) return alert("This browser can't record speech. Try Chrome on a computer.");
+    stopListening.current?.();
+    const started = Date.now();
+    recText.current = "";
+    recWant.current = true;
+    recLive.current = true;
+    setRec({ started, text: "" });
+    void runRec(started);
+  };
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  /** Follow-up questions, written on the device (free) for the latest answer. */
+  const addFollowUps = (id: string, question: string, answer: string) => {
+    if (status !== "available" || !answer.trim()) return;
+    void followUpsOnDevice(question, answer)
+      .then((followups) => followups.length && patch(id, { followups }))
+      .catch(() => undefined);
   };
   const copy = (m: Msg) =>
     void navigator.clipboard?.writeText(m.text).then(() => {
@@ -330,6 +456,7 @@ export function App() {
         trail: [...steps.slice(0, -1), `Cloud improved · ${fmtMs(performance.now() - t0)}`],
       });
       setStats((s) => ({ ...s, [res.where]: s[res.where] + 1 }));
+      addFollowUps(replyId, turns.filter((t) => t.role === "user").at(-1)?.text ?? "", unshield(res.text, sh.vault));
     } catch (e) {
       // The draft is still good to read: show it rather than an empty error.
       patch(replyId, {
@@ -355,21 +482,22 @@ export function App() {
   };
 
   const send = useCallback(
-    async (raw?: string) => {
+    async (raw?: string, opts?: { label?: string }) => {
       stopListening.current?.();
       let text = (raw ?? input).trim();
-      if ((!text && !image) || busy) return;
+      const pic = image ?? (follow ? frame() : undefined);
+      if ((!text && !pic) || busy) return;
       if (web && raw === undefined && text && !/^\/research\b/i.test(text)) text = `/research ${text}`;
       const deviceReady = status === "available";
-      const d = decide(text, { mode, hasImage: Boolean(image), deviceReady });
+      const d = decide(text, { mode, hasImage: Boolean(pic), deviceReady });
       // Offline: nothing can reach the cloud, so ROOK keeps thinking on the device.
       if (!online && d.route !== "instant" && !d.deviceOnly) {
         d.deviceOnly = true;
         d.route = "device";
         d.reason = "You're offline → answering on your device";
       }
-      const user: Msg = { id: uid(), role: "user", text, ...(image ? { image } : {}) };
-      const reply: Msg = { id: uid(), role: "rook", text: "", route: d.route, reason: d.reason, pending: true, stage: image ? "looking" : "thinking" };
+      const user: Msg = { id: uid(), role: "user", text, ...(pic ? { image: pic } : {}), ...(opts?.label ? { label: opts.label } : {}) };
+      const reply: Msg = { id: uid(), role: "rook", text: "", route: d.route, reason: d.reason, pending: true, stage: pic ? "looking" : "thinking" };
       setMsgs((list) => [...list, user, reply]);
       setInput("");
       setImage(undefined);
@@ -398,6 +526,9 @@ export function App() {
         .filter((m) => !m.error && !m.pending && (m.text || m.image))
         .slice(-8)
         .map((m) => ({ role: m.role === "user" ? "user" : "model", text: m.role === "user" ? promptFor(m.text) : m.text, ...(m.image ? { image: m.image } : {}) }));
+      // The latest question carries the project's notes, the research format and the Follow hint.
+      const last = turns.at(-1)!;
+      last.text = projects.withContext(project, last.text) + (d.route === "research" ? RESEARCH_FORMAT : "") + (follow && pic ? FOLLOW_HINT : "");
 
       // Self-check: in Auto, the device answers, grades itself, and calls in the cloud only when unsure.
       const selfCheck = mode === "auto" && d.route === "device" && !d.deviceOnly && deviceReady && online;
@@ -416,6 +547,7 @@ export function App() {
             trail.push(online ? "Private: never left this device" : "Offline: never left this device");
             patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(nanoMs), trail });
             setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
+            addFollowUps(reply.id, text, draft);
             return;
           }
           patch(reply.id, { text: draft, stage: "checking", trail: [...trail, "Checking its own answer…"] });
@@ -435,6 +567,7 @@ export function App() {
           }
           trail.push("Good enough: the cloud wasn't needed");
           patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(performance.now() - started), trail, confidence: grade.confidence });
+          addFollowUps(reply.id, text, draft);
           setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
         } catch (e) {
           if (ctrl.signal.aborted) patch(reply.id, { pending: false, error: "Stopped.", ...(draft ? { text: draft } : {}) });
@@ -449,7 +582,7 @@ export function App() {
       }
 
       // Privacy Shield: anything that may reach the cloud is cleaned on the device first.
-      if (shieldOn && !image) patch(reply.id, { stage: "guarding" });
+      if (shieldOn && !pic) patch(reply.id, { stage: "guarding" });
       const sh = await shieldTurns(turns, deviceReady);
       const vault = sh.vault;
       if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
@@ -458,7 +591,7 @@ export function App() {
         ...(sh.note ? { shielded: sh.note } : {}),
         youWrote: promptFor(text),
         cloudSaw: sh.turns.at(-1)?.text ?? "",
-        stage: image ? "looking" : d.route === "research" ? "gathering" : "seeking",
+        stage: pic ? "looking" : d.route === "research" ? "gathering" : "seeking",
       });
 
       const which = d.route === "research" ? "research" : d.route === "cloud" ? "cloud" : "hybrid";
@@ -508,6 +641,7 @@ export function App() {
             /* the full answer is already there */
           }
         }
+        addFollowUps(reply.id, text, final);
       } catch (e) {
         if (ctrl.signal.aborted) patch(reply.id, { pending: false, error: "Stopped." });
         else patch(reply.id, { pending: false, error: friendly(e) });
@@ -516,45 +650,66 @@ export function App() {
         abort.current = null;
       }
     },
-    [input, image, busy, status, mode, msgs, shieldOn, online, web], // eslint-disable-line react-hooks/exhaustive-deps
+    [input, image, busy, status, mode, msgs, shieldOn, online, web, follow, project], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   if (!configured) return <Setup />;
 
   return (
     <div className="shell">
       <header className="bar">
-        <button className="brand" onClick={newChat} title="New chat">
-          <Mark size={26} />
+        <button className="brand" onClick={newChat} title="Home">
+          <Mark size={24} />
           <span className="brand__word">ROOK</span>
-          <span className="brand__sub">for Chrome</span>
         </button>
-        <button className="barbtn" onClick={newChat} title="Start a new chat">
-          <IconPlus size={15} /> New
-        </button>
-        <button className={`barbtn ${panel ? "on" : ""}`} aria-expanded={panel} onClick={() => setPanel((v) => !v)} title="Your saved chats (kept on this device only)">
-          <IconHistory size={15} /> History{saved.length ? ` · ${saved.length}` : ""}
-        </button>
-        <div className="bar__right">
-          <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
-          <div className="seg" role="radiogroup" aria-label="Where ROOK thinks">
-            {(
-              [
-                ["auto", "Auto", "Device first, cloud when needed"],
-                ["private", "Private", "Never leaves this device"],
-                ["cloud", "Cloud", "Always the cloud model"],
-              ] as const
-            ).map(([v, label, title]) => (
-              <button key={v} role="radio" aria-checked={mode === v} className={mode === v ? "on" : ""} title={title} onClick={() => setMode(v)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <button className={`shieldbtn ${shieldOn ? "on" : ""}`} aria-pressed={shieldOn} onClick={() => setShieldOn((v) => !v)} title="Hide personal details on the device before anything goes to the cloud">
-            Shield {shieldOn ? "on" : "off"}
+        <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
+        <nav className="bar__icons" aria-label="ROOK">
+          <button className="ibtn" onClick={newChat} title="New chat" aria-label="New chat">
+            <IconPlus size={18} />
           </button>
-        </div>
+          <button className={`ibtn ${projPanel ? "on" : ""}`} aria-expanded={projPanel} onClick={() => (setProjPanel((v) => !v), setPanel(false))} title="Projects" aria-label="Projects">
+            <IconFolder size={18} />
+          </button>
+          <button className={`ibtn ${panel ? "on" : ""}`} aria-expanded={panel} onClick={() => (setPanel((v) => !v), setProjPanel(false))} title="Your saved chats (on this device only)" aria-label="History">
+            <IconHistory size={18} />
+            {saved.length > 0 && <span className="ibtn__count">{saved.length}</span>}
+          </button>
+          <span className="bar__sep" />
+          <button
+            className={`ibtn ibtn--shield ${shieldOn ? "on" : ""}`}
+            aria-pressed={shieldOn}
+            onClick={() => setShieldOn((v) => !v)}
+            title={shieldOn ? "Privacy Shield on: personal details are hidden before anything reaches the cloud" : "Privacy Shield off"}
+            aria-label="Privacy Shield"
+          >
+            <IconShield size={18} />
+          </button>
+        </nav>
       </header>
+
+      {projPanel && (
+        <ProjectsPanel
+          projects={projectList}
+          current={projectId}
+          onClose={() => setProjPanel(false)}
+          onPick={pickProject}
+          onCreate={(name) => {
+            if (!store) return;
+            const r = projects.create(store, name);
+            setProjectList(r.list);
+            pickProject(r.project.id);
+          }}
+          onUpdate={(id, patch) => store && setProjectList(projects.update(store, id, patch))}
+          onDelete={(id) => {
+            if (!store) return;
+            setProjectList(projects.remove(store, id));
+            if (projectId === id) setProjectId(null);
+          }}
+        />
+      )}
 
       {panel && (
         <div className="history-anchor">
@@ -617,23 +772,18 @@ export function App() {
 
       <main className="workspace">
         {msgs.length === 0 ? (
-          <section className="hero">
-            <RookBird behavior="watching" size={64} />
-            <h1>Thinks on your device first.</h1>
-            <p>
-              ROOK answers on your computer with <strong>Gemini Nano</strong> whenever it can: private, instant and free. It reaches for the <strong>cloud</strong> only when a task needs
-              it, and hides your personal details before it does.
-            </p>
-            <div className="examples">
-              {EXAMPLES.map((e) => (
-                <button key={e.label} className="example" onClick={() => void send(e.label)}>
-                  <span>{e.label}</span>
-                  <small>{e.hint}</small>
-                </button>
-              ))}
-            </div>
-            <p className="hero__tip">Try turning off your Wi-Fi: ROOK keeps answering on your device.</p>
-          </section>
+          <Home
+            project={project?.name}
+            recording={Boolean(rec)}
+            following={Boolean(follow)}
+            examples={EXAMPLES}
+            onAsk={() => textarea.current?.focus()}
+            onLook={look}
+            onScan={() => setCamera(true)}
+            onRecord={toggleRecord}
+            onFollow={() => void startFollow()}
+            onExample={(e) => void send(e.prompt)}
+          />
         ) : (
           <div className="thread">
             {msgs.map((m, i) =>
@@ -644,7 +794,16 @@ export function App() {
                       <img className="msg__img" src={`data:${m.image.mimeType};base64,${m.image.data}`} alt="Shared screen" />
                     </div>
                   )}
-                  {m.text && <div className="bubble">{m.text}</div>}
+                  {m.label ? (
+                    <details className="bubble bubble--label">
+                      <summary>
+                        <IconMic size={14} /> {m.label}
+                      </summary>
+                      <p>{m.text.replace(RECORD_PROMPT, "").replace(/^"""\n|\n"""$/g, "")}</p>
+                    </details>
+                  ) : (
+                    m.text && <div className="bubble">{m.text.replace(/^\/research\s*/i, "")}</div>
+                  )}
                 </div>
               ) : (
                 <article key={m.id} className={`msg msg--rook ${m.pending ? "msg--pending" : ""}`}>
@@ -665,7 +824,8 @@ export function App() {
                   </div>
                   {m.error && <p className="msg__error">{m.error}</p>}
                   {m.note && <p className="msg__note">{m.note}</p>}
-                  {(!m.error || m.text) && <Markdown text={m.text || (m.pending ? "…" : "")} />}
+                  {!m.pending && <ReportTabs id={m.id} text={m.text} />}
+                  <div id={`ans-${m.id}`}>{(!m.error || m.text) && <Markdown text={m.text || (m.pending ? "…" : "")} />}</div>
                   {!m.pending && m.text ? (
                     <div className="msg__tools">
                       <button className="link" onClick={() => copy(m)} aria-label="Copy answer">
@@ -716,29 +876,46 @@ export function App() {
                       <p className="xray__note">Your real details never left this device.</p>
                     </div>
                   )}
-                  {(m.summary || m.sources) && (
-                    <div className="cards">
-                      {m.summary && (
-                        <section className="rcard">
-                          <h4>Summary <span className="rcard__where">on your device</span></h4>
-                          <p className="rcard__summary">{m.summary}</p>
-                        </section>
-                      )}
-                      {m.sources && (
-                        <section className="rcard">
-                          <h4>{m.sources.length} sources <span className="rcard__where">Google Search</span></h4>
-                          <ul>
-                            {m.sources.slice(0, 6).map((s) => (
-                              <li key={s.uri}>
-                                <a href={s.uri} target="_blank" rel="noreferrer noopener">
-                                  {s.title}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        </section>
-                      )}
-                    </div>
+                  {m.summary && (
+                    <section className="report">
+                      <h4 className="report__label">
+                        Summary <span className="report__where">written on your device</span>
+                      </h4>
+                      <p className="report__summary">{m.summary}</p>
+                    </section>
+                  )}
+                  {m.sources && m.sources.length > 0 && (
+                    <section className="report">
+                      <h4 className="report__label">Sources</h4>
+                      <ol className="sources">
+                        {m.sources.slice(0, 8).map((src, n) => (
+                          <li key={src.uri}>
+                            <a className="source" href={src.uri} target="_blank" rel="noreferrer noopener">
+                              <span className="source__n">{n + 1}</span>
+                              <span className="source__text">
+                                <span className="source__title">{src.title}</span>
+                                <span className="source__host">{host(src)}</span>
+                              </span>
+                              <IconExternal size={15} />
+                            </a>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
+                  {!m.pending && m.followups && m.followups.length > 0 && (
+                    <section className="report">
+                      <h4 className="report__label">
+                        Follow-up questions <span className="report__where">suggested on your device</span>
+                      </h4>
+                      <div className="followups">
+                        {m.followups.map((q) => (
+                          <button key={q} className="followup" disabled={busy} onClick={() => void send(q)}>
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
                   )}
                   {m.searchEntry && <iframe className="searchentry" title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={m.searchEntry} />}
                 </article>
@@ -754,6 +931,29 @@ export function App() {
           <div className="stats" aria-label="This session" title={`${stats.instant} instant · ${stats.device} on device · ${stats.cloud} cloud · ≈${stats.tokensKept.toLocaleString()} tokens kept on this device`}>
             {stats.avoided > 0 && <span className="stats__saved">{stats.avoided} answered without the cloud</span>}
             {stats.hidden > 0 && <span>{stats.hidden} detail{stats.hidden === 1 ? "" : "s"} kept private</span>}
+          </div>
+        )}
+        {follow && (
+          <div className="live live--follow" role="status">
+            <video ref={followVideo} muted playsInline className="live__video" />
+            <span className="live__text">
+              <strong>Following your screen.</strong> ROOK looks at it with each question and tells you what to do.
+            </span>
+            <button type="button" className="live__stop" onClick={stopFollow}>
+              End
+            </button>
+          </div>
+        )}
+        {rec && (
+          <div className="live live--rec" role="status">
+            <span className="live__dot" />
+            <span className="live__time">
+              {Math.floor((now - rec.started) / 60000)}:{String(Math.floor(((now - rec.started) / 1000) % 60)).padStart(2, "0")}
+            </span>
+            <span className="live__text">{rec.text ? `…${rec.text.slice(-90)}` : "Listening. Speak normally; ROOK writes the notes when you stop."}</span>
+            <button type="button" className="live__stop" onClick={toggleRecord}>
+              Stop
+            </button>
           </div>
         )}
         <form
@@ -772,9 +972,10 @@ export function App() {
             </div>
           )}
           <textarea
+            ref={textarea}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={mode === "private" ? "Ask privately: stays on this device…" : web ? "Search the web for…" : "Ask anything, or share your screen…"}
+            placeholder={follow ? "Ask about what's on your screen…" : mode === "private" ? "Ask privately: stays on this device…" : web ? "What should ROOK research?" : "Ask anything…"}
             rows={1}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -791,25 +992,45 @@ export function App() {
             }}
           />
           <div className="composer__row">
-            <button type="button" className="tool" title="Share a screen or window: ROOK takes one picture of it" onClick={look}>
-              <IconCapture size={16} /> Look
+            <button type="button" className="iconbtn" title="Look: share a screen or window" aria-label="Look" onClick={look}>
+              <IconCapture size={17} />
             </button>
-            <button type="button" className="tool" title="Add a picture" onClick={() => fileInput.current?.click()}>
-              <IconPlus size={16} /> Image
+            <button type="button" className="iconbtn" title="Add a picture" aria-label="Add a picture" onClick={() => fileInput.current?.click()}>
+              <IconPlus size={17} />
             </button>
-            <button
-              type="button"
-              className={`iconbtn ${web ? "on" : ""}`}
-              aria-pressed={web}
-              title={web ? "Searching the web: on" : "Search the web for this answer"}
-              onClick={() => setWeb((v) => !v)}
-            >
+            <button type="button" className={`iconbtn ${web ? "on" : ""}`} aria-pressed={web} title={web ? "Web research: on" : "Research on the web"} aria-label="Web research" onClick={() => setWeb((v) => !v)}>
               <IconGlobe size={17} />
             </button>
             <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then(attach)} />
+            <Picker
+              icon={<IconFolder size={15} />}
+              label={project?.name ?? "No project"}
+              title={project ? `Project: ${project.name}` : "Project"}
+              compact
+              value={projectId ?? ""}
+              options={[{ value: "", label: "No project" }, ...projectList.map((p) => ({ value: p.id, label: p.name }))]}
+              onPick={(v) => pickProject(v || null)}
+              footer={
+                <button type="button" className="menu__item" onClick={() => setProjPanel(true)}>
+                  New or edit projects…
+                </button>
+              }
+            />
             <span className="spacer" />
+            <Picker
+              icon={<IconSpark size={15} />}
+              label={mode === "auto" ? "Auto" : mode === "private" ? "Private" : "Cloud"}
+              title="Where ROOK thinks"
+              value={mode}
+              options={[
+                { value: "auto", label: "Auto", hint: "Device first, cloud when it isn't sure" },
+                { value: "private", label: "Private", hint: "Never leaves this device" },
+                { value: "cloud", label: "Cloud", hint: "Always the cloud model" },
+              ]}
+              onPick={setMode}
+            />
             {canListen() && (
-              <button type="button" className={`mic ${listening ? "mic--on" : ""}`} aria-pressed={listening} title={listening ? "Stop listening" : "Speak instead of typing"} onClick={() => void mic()}>
+              <button type="button" className={`mic ${listening ? "mic--on" : ""}`} aria-pressed={listening} disabled={Boolean(rec)} title={listening ? "Stop listening" : "Speak instead of typing"} onClick={() => void mic()}>
                 {listening ? <IconStop size={16} /> : <IconMic size={17} />}
               </button>
             )}
@@ -818,13 +1039,24 @@ export function App() {
                 <IconStop size={16} />
               </button>
             ) : (
-              <button type="submit" className="send" aria-label="Send" disabled={!input.trim() && !image}>
+              <button type="submit" className="send" aria-label="Send" disabled={!input.trim() && !image && !follow}>
                 <IconArrowUp size={18} />
               </button>
             )}
           </div>
         </form>
       </footer>
+      {camera && (
+        <Camera
+          onClose={() => setCamera(false)}
+          onShot={(img) => {
+            setCamera(false);
+            attach(img);
+            setInput((t) => t || "What is this? Tell me what I should know or do.");
+            textarea.current?.focus();
+          }}
+        />
+      )}
       {flash && <LookFlash image={flash} onDone={() => setFlash(undefined)} />}
       {tour && <Onboarding onLook={look} onDone={() => setTour(false)} />}
     </div>
@@ -832,19 +1064,53 @@ export function App() {
 }
 
 function DeviceChip({ status, progress, onPrepare }: { status: DeviceStatus; progress: number | null; onPrepare: () => void }) {
-  if (progress !== null) return <span className="chip chip--busy">Downloading on-device model… {Math.round(progress * 100)}%</span>;
-  if (status === "available") return <span className="chip chip--ok">On-device model ready</span>;
+  if (progress !== null) return <span className="chip chip--busy">Getting Gemini Nano… {Math.round(progress * 100)}%</span>;
+  if (status === "available")
+    return (
+      <span className="chip chip--ok" title="Gemini Nano is ready: ROOK answers on this device first">
+        <span className="chip__dot" /> Nano ready
+      </span>
+    );
   if (status === "downloadable" || status === "downloading")
     return (
-      <button className="chip chip--action" onClick={onPrepare}>
-        Get on-device model
+      <button className="chip chip--action" onClick={onPrepare} title="Download Chrome's on-device model (Gemini Nano)">
+        Get Gemini Nano
       </button>
     );
   return (
     <span className="chip chip--off" title="This browser has no on-device model (Gemini Nano). ROOK uses the cloud for everything except instant answers.">
-      Cloud only on this browser
+      Cloud only
     </span>
   );
+}
+
+/** Research reports: jump to a section. */
+function ReportTabs({ id, text }: { id: string; text: string }) {
+  const heads = [...text.matchAll(/^#{1,4}\s+(.+)$/gm)].map((h) => h[1]!.replace(/[*_`]/g, "").trim()).slice(0, 6);
+  if (heads.length < 3) return null;
+  const go = (h: string) => {
+    const el = [...(document.getElementById(`ans-${id}`)?.querySelectorAll("h2, h3") ?? [])].find((x) => x.textContent?.trim() === h);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  return (
+    <nav className="rtabs" aria-label="Report sections">
+      {heads.map((h) => (
+        <button key={h} type="button" className="rtab" onClick={() => go(h)}>
+          {h}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function host(s: { title: string; uri: string }): string {
+  // Grounded links are redirects; the title is usually the site's domain.
+  try {
+    const h = new URL(s.uri).hostname.replace(/^www\./, "");
+    return h.includes("vertexaisearch") || h.includes("google") ? s.title : h;
+  } catch {
+    return s.title;
+  }
 }
 
 function friendly(e: unknown): string {

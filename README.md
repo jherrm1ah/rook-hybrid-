@@ -32,6 +32,13 @@ The cloud model writes "Dear [NAME_1]…"; you read "Dear Tolu…". The answer c
 
 ## Features
 
+- **The ROOK desktop look**: the black "What should ROOK get done?" card, tiles for Ask, Look, Scan, Record and Follow, an icon-only bar, round buttons, and Project and Auto pickers in the message box.
+- **Scan**: take a photo with the camera; Gemini Nano reads it on the device.
+- **Record**: speak a voice note or a meeting; Chrome turns speech into text (on the device when it can) and ROOK writes the summary, key points and action items.
+- **Follow**: share a screen once; ROOK looks at it with each question and tells you exactly what to click or type. (A web page can't control your computer, so ROOK guides you; the desktop app is the one that can act.)
+- **Projects**: name a project and add notes (goals, tone, prices); ROOK reads them with every question in it. Kept on this device, and cleaned by the Privacy Shield before any cloud call.
+- **Research reports**: section tabs (Overview, Key findings, Comparison, Recommendations), tables, numbered sources, a summary card and follow-up questions, both written on the device.
+
 - **The living ROOK**: the bird from the ROOK desktop app moves the way ROOK is working (ROOK IS THINKING, CHECKING, GUARDING, SEEKING, DRAFTING), with a welcome tour, a scan line over anything it looks at, a mic by Send (on-device speech when Chrome offers it), a web-search toggle and Copy on every answer.
 
 - **Self-check (the device grades itself)**: in Auto, Gemini Nano answers, then scores its own answer (0–100, a constrained JSON reply, on the device). Sure enough → done, no cloud call. Unsure → the Privacy Shield cleans the question *and* the draft, and the cloud model improves it. The device's first answer stays one tap away. There is also a small **Improve** button.

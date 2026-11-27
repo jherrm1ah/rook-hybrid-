@@ -1,5 +1,62 @@
 
-  VITE v8.4.0  ready in 2064 ms
+  VITE v8.4.0  ready in 1863 ms
 
   ➜  Local:   http://localhost:5181/
   ➜  Network: use --host to expose
+4:24:57 PM [vite] (client) [Unhandled error] ReferenceError: Cannot access 'store' before initialization
+ > src/App.tsx:192:76
+    190 |    };
+    191 |    // Projects (on this device only)
+    192 |    const [projectList, setProjectList] = useState<projects.Project[]>(() => (store ? projects.load(store) : []));
+        |                                                                              ^
+    193 |    const [projectId, setProjectId] = useState<string | null>(() => (store ? projects.currentId(store) : null));
+    194 |    const [projPanel, setProjPanel] = useState(false);
+ > mountStateImpl node_modules/react-dom/cjs/react-dom-client.development.js:8650:23
+ > mountState node_modules/react-dom/cjs/react-dom-client.development.js:8671:21
+ > Object.useState node_modules/react-dom/cjs/react-dom-client.development.js:28913:17
+ > exports.useState node_modules/react/cjs/react.development.js:1309:33
+ > App src/App.tsx:192:40
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:28571:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:8030:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10569:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12205:17
+
+4:24:57 PM [vite] (client) [console.warn] An error occurred in the <App> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+4:25:35 PM [vite] (client) [Unhandled error] ReferenceError: Cannot access 'store' before initialization
+ > src/App.tsx:192:76
+    190 |    };
+    191 |    // Projects (on this device only)
+    192 |    const [projectList, setProjectList] = useState<projects.Project[]>(() => (store ? projects.load(store) : []));
+        |                                                                              ^
+    193 |    const [projectId, setProjectId] = useState<string | null>(() => (store ? projects.currentId(store) : null));
+    194 |    const [projPanel, setProjPanel] = useState(false);
+ > mountStateImpl node_modules/react-dom/cjs/react-dom-client.development.js:8650:23
+ > mountState node_modules/react-dom/cjs/react-dom-client.development.js:8671:21
+ > Object.useState node_modules/react-dom/cjs/react-dom-client.development.js:28913:17
+ > exports.useState node_modules/react/cjs/react.development.js:1309:33
+ > App src/App.tsx:192:40
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:28571:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:8030:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10569:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:12205:17
+
+4:25:35 PM [vite] (client) [console.warn] An error occurred in the <App> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+4:25:43 PM [vite] (client) hmr update /src/App.tsx
+4:26:32 PM [vite] (client) hmr update /src/Markdown.tsx
+4:26:32 PM [vite] (client) hmr update /src/App.tsx
+4:26:32 PM [vite] (client) hmr update /src/styles.css
+4:26:42 PM [vite] (client) hmr update /src/App.tsx
+4:27:32 PM [vite] (client) hmr update /src/Markdown.tsx
+4:28:16 PM [vite] (client) hmr update /src/Pickers.tsx
+4:28:16 PM [vite] (client) hmr update /src/App.tsx
+4:28:16 PM [vite] (client) hmr update /src/styles.css
+4:28:51 PM [vite] (client) hmr update /src/styles.css
+4:29:43 PM [vite] (client) hmr update /src/styles.css
