@@ -19,11 +19,25 @@ export function activeDocument(): Document {
   return current?.document ?? document;
 }
 
-export async function float(onBack: () => void): Promise<boolean> {
+/** The floating window, while ROOK floats. */
+export function floatWindow(): Window | null {
+  return current;
+}
+
+/** Resize the floating window (Chrome allows it after a click inside it). */
+export function resizeFloat(width: number, height: number): void {
+  try {
+    current?.resizeTo(width, height);
+  } catch {
+    /* not allowed without a click; the layout still adapts */
+  }
+}
+
+export async function float(onBack: () => void, size = { width: 420, height: 680 }): Promise<boolean> {
   const pipApi = api();
   const root = document.getElementById("root");
   if (!pipApi || !root) return false;
-  const pip = await pipApi.requestWindow({ width: 420, height: 680 });
+  const pip = await pipApi.requestWindow(size);
   // Same look: copy the page's styles.
   for (const sheet of [...document.styleSheets]) {
     try {
@@ -45,7 +59,7 @@ export async function float(onBack: () => void): Promise<boolean> {
   // A note in the page while ROOK floats.
   const note = document.createElement("div");
   note.className = "floating-note";
-  note.innerHTML = `<p><strong>ROOK is floating.</strong> It stays on top of your other apps.</p>`;
+  note.innerHTML = `<p><strong>ROOK is floating.</strong> Keep this tab open, then go to any other tab, site or app: ROOK stays on top.</p>`;
   const back = document.createElement("button");
   back.textContent = "Bring ROOK back here";
   back.onclick = () => pip.close();

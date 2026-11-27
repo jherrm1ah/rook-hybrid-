@@ -7,7 +7,7 @@ import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
 import { LookFlash, RookBird, RookLabel } from "./rook/RookBird";
 import { Onboarding, onboarded } from "./Onboarding";
-import { IconArrowUp, IconCapture, IconExpand, IconShrink, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
+import { IconArrowUp, IconCapture, IconExpand, IconMinus, IconShrink, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
 import { Home, type Example } from "./Home";
 import { Camera } from "./Camera";
 import { CropModal, crop } from "./CropModal";
@@ -15,7 +15,8 @@ import { LookMenu, type LookKind } from "./LookMenu";
 import { Picker } from "./Pickers";
 import { ProjectsPanel } from "./ProjectsPanel";
 import { ResultCards } from "./ResultCards";
-import { canFloat, float, unfloat } from "./float";
+import { canFloat, float, floatWindow, resizeFloat, unfloat } from "./float";
+import { FloatOrb } from "./FloatOrb";
 import * as projects from "./projects";
 import { canListen, listen } from "./voice";
 
@@ -100,7 +101,7 @@ function highlight(text: string) {
 }
 
 /** One frame of a screen the user picks to share (Chrome asks them first). */
-async function captureScreen(surface?: "monitor" | "window"): Promise<Turn["image"]> {
+async function captureScreen(surface?: "monitor" | "window" | "browser"): Promise<Turn["image"]> {
   // Chrome's own picker still decides; this only pre-selects the right tab of it.
   const stream = await navigator.mediaDevices.getDisplayMedia({ video: (surface ? { displaySurface: surface } : true) as MediaTrackConstraints, audio: false });
   try {
@@ -172,13 +173,13 @@ export function App() {
   const [catching, setCatching] = useState(false);
   const [cropping, setCropping] = useState<Turn["image"]>();
   const lookPrompt = () => setInput((t) => t || "Explain what's on my screen and what I should do next.");
-  const look = (kind: LookKind = "screen") => {
+  const look = (kind: LookKind | "tab" = "screen") => {
     setLookMenu(null);
     setCatching(true);
-    void captureScreen(kind === "window" ? "window" : "monitor")
+    void captureScreen(kind === "window" ? "window" : kind === "tab" ? "browser" : "monitor")
       .then((img) => {
         if (kind === "region") return setCropping(img);
-        attach(img, kind === "window" ? "Window" : "Screen");
+        attach(img, kind === "window" ? "Window" : kind === "tab" ? "Page" : "Screen");
         lookPrompt();
       })
       .catch(() => undefined)
@@ -311,14 +312,44 @@ export function App() {
   const scroller = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [floating, setFloating] = useState(false);
+  // Float: ROOK as an icon on top of every tab and app; tap it to open the full mini ROOK.
+  const ORB = { width: 200, height: 236 };
+  const FULL = { width: 420, height: 680 };
+  const [orb, setOrb] = useState(false);
+  const [news, setNews] = useState(false);
   const toggleFloat = () => {
     if (floating) return unfloat();
     setPanel(false);
     setProjPanel(false);
-    void float(() => setFloating(false))
-      .then((ok) => ok && setFloating(true))
+    void float(() => {
+      setFloating(false);
+      setOrb(false);
+      setNews(false);
+    }, ORB)
+      .then((ok) => {
+        if (!ok) return;
+        setFloating(true);
+        setOrb(true);
+      })
       .catch(() => undefined);
   };
+  const openFull = () => {
+    resizeFloat(FULL.width, FULL.height);
+    setOrb(false);
+    setNews(false);
+  };
+  const toOrb = () => {
+    resizeFloat(ORB.width, ORB.height);
+    setOrb(true);
+  };
+  // If the floating window is resized by hand, follow it.
+  useEffect(() => {
+    const w = floating ? floatWindow() : null;
+    if (!w) return;
+    const on = () => setOrb(w.innerWidth < 300);
+    w.addEventListener("resize", on);
+    return () => w.removeEventListener("resize", on);
+  }, [floating]);
   const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1100px)").matches);
   useEffect(() => {
     const q = matchMedia("(min-width: 1100px)");
@@ -698,10 +729,34 @@ export function App() {
         setProjectList(projects.update(kv, project.id, { notes }));
       }
     : undefined;
+  const lastDone = useRef<string | null>(null);
+  useEffect(() => {
+    const last = msgs.at(-1);
+    if (!last || last.role !== "rook" || last.pending || last.id === lastDone.current) return;
+    lastDone.current = last.id;
+    if (orb) setNews(true);
+  }, [msgs, orb]);
   const sendRef = useRef(send);
   sendRef.current = send;
 
   if (!configured) return <Setup />;
+
+  if (floating && orb) {
+    const working = msgs.find((m) => m.pending);
+    const stage = working ? (working.stage ?? "thinking") : null;
+    return (
+      <FloatOrb
+        behavior={stage ?? (news ? "returning" : "watching")}
+        verb={stage ? VERB[stage] : undefined}
+        news={news}
+        onOpen={openFull}
+        onLook={() => {
+          openFull();
+          look("tab");
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`shell ${railOn ? "shell--cards" : ""}`}>
@@ -736,11 +791,16 @@ export function App() {
             <IconHistory size={18} />
             {saved.length > 0 && <span className="ibtn__count">{saved.length}</span>}
           </button>
+          {floating && (
+            <button className="ibtn" onClick={toOrb} title="Shrink ROOK to a floating icon" aria-label="Shrink to icon">
+              <IconMinus size={18} />
+            </button>
+          )}
           {canFloat() && (
             <button
               className={`ibtn ${floating ? "on" : ""}`}
               onClick={toggleFloat}
-              title={floating ? "Put ROOK back in the page" : "Float: keep ROOK on top of your other apps"}
+              title={floating ? "Put ROOK back in the page" : "Float: ROOK stays on top as an icon while you use other tabs and apps"}
               aria-label={floating ? "Stop floating" : "Float"}
             >
               {floating ? <IconShrink size={17} /> : <IconExpand size={17} />}
