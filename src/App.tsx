@@ -38,10 +38,13 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 
 const EXAMPLES = [
-  { label: "15% of 84,500", hint: "Instant · no AI" },
-  { label: "Rewrite this to sound friendlier: send me the invoice today", hint: "On your device" },
-  { label: "Draft a reply to tolu.adeyemi@gmail.com confirming 40 units, call me on 0803 123 4567", hint: "Shielded if it goes to the cloud" },
-  { label: "/research latest Firebase AI Logic hybrid inference features", hint: "Cloud + Google Search" },
+  { label: "15% of 84,500", hint: "Instant. No AI needed." },
+  { label: "Rewrite this to sound friendlier: send me the invoice today", hint: "Answered on your device" },
+  {
+    label: "Tolu Adeyemi (tolu.adeyemi@gmail.com) asks what VAT rate to charge on invoices in Nigeria. Draft my reply.",
+    hint: "Device unsure, cloud improves it. Then tap What the cloud saw.",
+  },
+  { label: "/research latest Firebase AI Logic hybrid inference features", hint: "Cloud with Google Search" },
 ];
 
 function Mark({ size = 28 }: { size?: number }) {
@@ -571,6 +574,7 @@ export function App() {
                 </button>
               ))}
             </div>
+            <p className="hero__tip">Try turning off your Wi-Fi: ROOK keeps answering on your device.</p>
           </section>
         ) : (
           <div className="thread">
