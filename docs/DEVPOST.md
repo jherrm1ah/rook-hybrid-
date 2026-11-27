@@ -31,7 +31,9 @@ ROOK for Chrome is an AI assistant that runs Gemini Nano inside Chrome and uses 
 - **How.** Each answer shows the route it took: device, self-check score, shield, cloud, and how long each step took.
 - **Offline.** If the connection drops, ROOK keeps answering on the device.
 - **Research.** Questions that need the live web use the cloud model with Google Search grounding, with sources, and Gemini Nano writes a short summary card on the device.
-- **Look at my screen.** Share a window and ROOK explains what's on it.
+- **Look.** Share a window and ROOK explains what's on it; a scan line shows exactly what it captured.
+- **The living ROOK.** The ROOK bird moves the way ROOK is working (thinking, checking, guarding your details, drafting), so you always know what's happening without reading status text.
+- **Speak instead of typing**, using Chrome's on-device speech recognition when it's available.
 - **Saved chats, on this device only.** History never leaves the browser.
 - Three modes: Auto, Private (never leaves the device) and Cloud.
 
