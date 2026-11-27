@@ -1,10 +1,9 @@
-name: Deploy to Firebase Hosting
+name: Deploy to Firebase Hosting (optional)
 # Publishes ROOK for Chrome to https://rook-hybrid.web.app on every push to main.
 # Needs the repository secret FIREBASE_SERVICE_ACCOUNT (Firebase → Project settings →
 # Service accounts → Generate new private key; paste the whole file as the secret).
+# Run by hand (Actions → Run workflow) once FIREBASE_SERVICE_ACCOUNT exists.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 jobs:
   deploy:

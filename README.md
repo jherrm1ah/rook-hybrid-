@@ -60,7 +60,8 @@ On-device inference needs a desktop Chrome with built-in AI (Gemini Nano) availa
 `chrome://on-device-internals`. In other browsers ROOK uses the cloud for everything except instant answers,
 and says so in the top bar.
 
-Deploy: `npm run build && npx firebase-tools deploy --only hosting`.
+Live: **https://jherrm1ah.github.io/rook-hybrid-/** (GitHub Pages, published on every push to `main`).
+Firebase Hosting is also configured (`firebase.json`): `npm run build && npx firebase-tools deploy --only hosting`.
 
 ## Tests
 
