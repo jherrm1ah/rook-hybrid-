@@ -1,0 +1,29 @@
+{
+  "name": "rook-for-chrome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ROOK for Chrome: hybrid on-device + cloud AI with Firebase AI Logic",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p .",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "firebase": "^13.4.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
