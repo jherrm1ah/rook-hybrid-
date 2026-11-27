@@ -14,6 +14,7 @@ import { CropModal, crop } from "./CropModal";
 import { LookMenu, type LookKind } from "./LookMenu";
 import { Picker } from "./Pickers";
 import { ProjectsPanel } from "./ProjectsPanel";
+import { ResultCards } from "./ResultCards";
 import * as projects from "./projects";
 import { canListen, listen } from "./voice";
 
@@ -306,6 +307,15 @@ export function App() {
     void runRec(started);
   };
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const scroller = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1100px)").matches);
+  useEffect(() => {
+    const q = matchMedia("(min-width: 1100px)");
+    const on = () => setWide(q.matches);
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
   /** Follow-up questions, written on the device (free) for the latest answer. */
   const addFollowUps = (id: string, question: string, answer: string) => {
     if (status !== "available" || !answer.trim()) return;
@@ -668,13 +678,23 @@ export function App() {
     [input, image, busy, status, mode, msgs, shieldOn, online, web, follow, project], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
+  // Result cards: for the latest research-style answer (a report with sections).
+  const cardMsg = [...msgs].reverse().find((m) => m.role === "rook" && !m.pending && !m.error && (m.route === "research" || (m.text.match(/^#{1,4}\s/gm)?.length ?? 0) >= 3));
+  const railOn = Boolean(cardMsg) && wide;
+  const saveCard = project
+    ? (title: string, text: string) => {
+        if (!kv) return;
+        const notes = `${project.notes.trim()}\n\n${title}:\n${text}`.trim();
+        setProjectList(projects.update(kv, project.id, { notes }));
+      }
+    : undefined;
   const sendRef = useRef(send);
   sendRef.current = send;
 
   if (!configured) return <Setup />;
 
   return (
-    <div className="shell">
+    <div className={`shell ${railOn ? "shell--cards" : ""}`}>
       <header className="bar">
         <button className="brand" onClick={newChat} title="Home">
           <Mark size={24} />
@@ -799,7 +819,8 @@ export function App() {
         </div>
       )}
 
-      <main className="workspace">
+      <div className="stage" ref={stageRef}>
+      <main className="workspace" ref={scroller}>
         {msgs.length === 0 ? (
           <Home
             project={project?.name}
@@ -907,6 +928,9 @@ export function App() {
                       <p className="xray__note">Your real details never left this device.</p>
                     </div>
                   )}
+                  {!wide && cardMsg?.id === m.id && (
+                    <ResultCards id={m.id} text={m.text} sources={m.sources} summary={m.summary} rail={false} onSave={saveCard} saveLabel={project ? `Save to ${project.name}` : undefined} />
+                  )}
                   {m.summary && (
                     <section className="report">
                       <h4 className="report__label">
@@ -956,6 +980,21 @@ export function App() {
           </div>
         )}
       </main>
+      {railOn && cardMsg && (
+        <ResultCards
+          key={cardMsg.id}
+          id={cardMsg.id}
+          text={cardMsg.text}
+          sources={cardMsg.sources}
+          summary={cardMsg.summary}
+          rail
+          scroller={scroller}
+          stage={stageRef}
+          onSave={saveCard}
+          saveLabel={project ? `Save to ${project.name}` : undefined}
+        />
+      )}
+      </div>
 
       <footer className="dock">
         {(stats.avoided > 0 || stats.hidden > 0) && (
