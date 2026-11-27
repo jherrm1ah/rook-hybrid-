@@ -12,11 +12,11 @@ Every request is routed to the cheapest place that can do it well, and each answ
 
 | Route | When | How |
 |---|---|---|
-| ◆ **Instant**: no AI | Maths, percentages, units, dates, money | ROOK's own on-device engine (`calculate`, shared with the ROOK desktop app) |
-| ⚡ **On your device** | Everyday requests, rewriting, explaining a shared screen | `getGenerativeModel(ai, { mode: InferenceMode.PREFER_ON_DEVICE, … })`: Gemini Nano via Chrome's Prompt API; falls back to the cloud automatically |
-| 🔒 **Private mode** | You choose "Private" | `InferenceMode.ONLY_ON_DEVICE`: never leaves the device, works offline |
-| ☁ **Cloud** | Long inputs (> 6,000 characters) or you choose "Cloud" | `InferenceMode.PREFER_IN_CLOUD` |
-| ☁ **Research** | "latest…", "compare … vs …", `/research …` | Cloud Gemini with **Google Search grounding**; sources shown as cards; then **Gemini Nano writes the summary card on the device** |
+| **Instant**: no AI | Maths, percentages, units, dates, money | ROOK's own on-device engine (`calculate`, shared with the ROOK desktop app) |
+| **On your device** | Everyday requests, rewriting, explaining a shared screen | `getGenerativeModel(ai, { mode: InferenceMode.PREFER_ON_DEVICE, … })`: Gemini Nano via Chrome's Prompt API; falls back to the cloud automatically |
+| **Private mode** | You choose "Private" | `InferenceMode.ONLY_ON_DEVICE`: never leaves the device, works offline |
+| **Cloud** | Long inputs (> 6,000 characters) or you choose "Cloud" | `InferenceMode.PREFER_IN_CLOUD` |
+| **Research** | "latest…", "compare … vs …", `/research …` | Cloud Gemini with **Google Search grounding**; sources shown as cards; then **Gemini Nano writes the summary card on the device** |
 
 ### Privacy Shield (hybrid in both directions)
 
@@ -32,9 +32,9 @@ The cloud model writes "Dear [NAME_1]…"; you read "Dear Tolu…". The answer c
 
 ## Features
 
-- **Self-check (the device grades itself)**: in Auto, Gemini Nano answers, then scores its own answer (0–100, a constrained JSON reply, on the device). Sure enough → done, no cloud call. Unsure → the Privacy Shield cleans the question *and* the draft, and the cloud model improves it. The device's first answer stays one tap away. There is also a manual **☁ Ask the cloud to improve this** button.
-- **👁 What the cloud saw**: every cloud answer opens a side-by-side X-ray: what you wrote vs. exactly what the cloud received, with the shield's placeholders highlighted.
-- **Route trail + savings meter**: each answer shows the path it took (⚡ Nano 84 ms → 🔍 34% sure → 🛡 hid 1 email → ☁ improved 1.1 s). The footer counts cloud calls avoided and roughly how many tokens never left the device.
+- **Self-check (the device grades itself)**: in Auto, Gemini Nano answers, then scores its own answer (0–100, a constrained JSON reply, on the device). Sure enough → done, no cloud call. Unsure → the Privacy Shield cleans the question *and* the draft, and the cloud model improves it. The device's first answer stays one tap away. There is also a small **Improve** button.
+- **What the cloud saw**: every cloud answer opens a side-by-side X-ray: what you wrote vs. exactly what the cloud received, with the shield's placeholders highlighted.
+- **Route trail + savings meter**: each answer shows the path it took (Nano 84 ms → 34% sure → hid 1 email → improved 1.1 s). The footer counts cloud calls avoided and roughly how many tokens never left the device.
 - **Offline mode**: lose your connection and ROOK keeps thinking on the device ("You're offline. Still thinking on your device").
 
 - Chat with streaming answers, multi-turn context (last 8 turns).

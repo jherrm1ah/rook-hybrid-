@@ -30,6 +30,8 @@ interface Msg {
   /** The device's first answer, when the cloud was asked to improve it. */
   draft?: string;
   confidence?: number;
+  /** A short, quiet remark (not an error). */
+  note?: string;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -54,9 +56,9 @@ function Mark({ size = 28 }: { size?: number }) {
 }
 
 function Badge({ where, route }: { where: Msg["where"]; route?: Route | undefined }) {
-  if (where === "instant") return <span className="badge badge--instant">◆ Instant · no AI</span>;
-  if (where === "device") return <span className="badge badge--device">⚡ On your device · Gemini Nano</span>;
-  if (where === "cloud") return <span className="badge badge--cloud">☁ Cloud · {CLOUD_MODEL}{route === "research" ? " + Google Search" : ""}</span>;
+  if (where === "instant") return <span className="badge badge--instant">Instant · no AI</span>;
+  if (where === "device") return <span className="badge badge--device">On your device · Gemini Nano</span>;
+  if (where === "cloud") return <span className="badge badge--cloud">Cloud · {CLOUD_MODEL}{route === "research" ? " + Google Search" : ""}</span>;
   return null;
 }
 
@@ -119,6 +121,7 @@ export function App() {
   /** What each device answer was asked, so "improve in the cloud" can resend it (shielded). */
   const asked = useRef(new Map<string, { turns: Turn[]; question: string }>());
   const [xray, setXray] = useState<Record<string, boolean>>({});
+  const [how, setHow] = useState<Record<string, boolean>>({});
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -237,7 +240,7 @@ export function App() {
     const deviceReady = status === "available";
     const sh = await shieldTurns(turns, deviceReady, draft);
     const sent: Turn[] = [...sh.turns, { role: "user", text: improvePrompt(sh.extra ?? draft) }];
-    const steps = [...trail, ...(sh.hidden ? [`🛡 Shield hid ${sh.what}`] : []), "☁ Cloud improving…"];
+    const steps = [...trail, ...(sh.hidden ? [`Shield hid ${sh.what}`] : []), "Cloud improving…"];
     if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
     patch(replyId, {
       draft,
@@ -254,13 +257,20 @@ export function App() {
     setBusy(true);
     const t0 = performance.now();
     try {
-      const res = await streamAnswer("cloud", sent, (soFar) => patch(replyId, { text: unshield(soFar, sh.vault) }), ctrl.signal);
+      const onText = (soFar: string) => patch(replyId, { text: unshield(soFar, sh.vault) });
+      let res;
+      try {
+        res = await streamAnswer("cloud", sent, onText, ctrl.signal);
+      } catch (e) {
+        if (ctrl.signal.aborted) throw e;
+        res = await streamAnswer("cloud", sent, onText, ctrl.signal); // one retry: cloud hiccups are usually brief
+      }
       patch(replyId, {
         text: unshield(res.text, sh.vault),
         where: res.where,
         pending: false,
         ms: Math.round(performance.now() - started),
-        trail: [...steps.slice(0, -1), `☁ Cloud improved · ${fmtMs(performance.now() - t0)}`],
+        trail: [...steps.slice(0, -1), `Cloud improved · ${fmtMs(performance.now() - t0)}`],
       });
       setStats((s) => ({ ...s, [res.where]: s[res.where] + 1 }));
     } catch (e) {
@@ -269,9 +279,10 @@ export function App() {
         text: draft,
         where: "device",
         pending: false,
-        trail: [...steps.slice(0, -1), "☁ Cloud unavailable → kept the device's answer"],
-        error: ctrl.signal.aborted ? undefined : `Couldn't improve it in the cloud (${friendly(e)}). Showing the on-device answer.`,
+        trail: [...steps.slice(0, -1), "Cloud unavailable → kept the device's answer"],
+        note: ctrl.signal.aborted ? undefined : "The cloud didn't respond, so this is the on-device answer.",
       });
+      console.warn("Cloud improve failed:", e);
     } finally {
       setBusy(false);
       abort.current = null;
@@ -307,7 +318,7 @@ export function App() {
 
       if (d.route === "instant") {
         const ms = Math.round(performance.now() - started);
-        patch(reply.id, { text: d.answer ?? "", where: "instant", pending: false, ms, trail: [`◆ Calculated in the browser · ${fmtMs(ms)}`, "No AI needed"] });
+        patch(reply.id, { text: d.answer ?? "", where: "instant", pending: false, ms, trail: [`Calculated in the browser · ${fmtMs(ms)}`, "No AI needed"] });
         setStats((s) => ({ ...s, instant: s.instant + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + (d.answer ?? "")) }));
         return;
       }
@@ -341,21 +352,21 @@ export function App() {
           const res = await streamAnswer("device", turns, (soFar) => patch(reply.id, { text: soFar }), ctrl.signal);
           draft = res.text;
           const nanoMs = performance.now() - started;
-          trail = [`⚡ Gemini Nano answered · ${fmtMs(nanoMs)}`];
+          trail = [`Gemini Nano answered · ${fmtMs(nanoMs)}`];
           if (!selfCheck) {
-            trail.push(online ? "🔒 Private: never left this device" : "📴 Offline: never left this device");
+            trail.push(online ? "Private: never left this device" : "Offline: never left this device");
             patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(nanoMs), trail });
             setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
             return;
           }
-          patch(reply.id, { text: draft, where: "device", trail: [...trail, "🔍 Checking its own answer…"] });
+          patch(reply.id, { text: draft, where: "device", trail: [...trail, "Checking its own answer…"] });
           let grade: Grade;
           try {
             grade = parseGrade(await gradeOnDevice(text, draft));
           } catch {
             grade = { confidence: 70, needsCloud: false, reason: "" };
           }
-          trail.push(`🔍 Self-check: ${grade.confidence}% sure${grade.reason ? ` (${grade.reason})` : ""}`);
+          trail.push(`Self-check: ${grade.confidence}% sure${grade.reason ? ` (${grade.reason})` : ""}`);
           asked.current.set(reply.id, { turns, question: text });
           if (shouldEscalate(grade, { online, deviceOnly: false })) {
             setBusy(false);
@@ -363,7 +374,7 @@ export function App() {
             await escalate(reply.id, turns, draft, trail, started, `The device was only ${grade.confidence}% sure → asked the cloud to improve it`);
             return;
           }
-          trail.push("✓ Good enough: the cloud wasn't needed");
+          trail.push("Good enough: the cloud wasn't needed");
           patch(reply.id, { text: draft, where: "device", pending: false, ms: Math.round(performance.now() - started), trail, confidence: grade.confidence });
           setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
         } catch (e) {
@@ -382,7 +393,7 @@ export function App() {
       const sh = await shieldTurns(turns, deviceReady);
       const vault = sh.vault;
       if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
-      const steps: string[] = [...(sh.hidden ? [`🛡 Shield hid ${sh.what}`] : [])];
+      const steps: string[] = [...(sh.hidden ? [`Shield hid ${sh.what}`] : [])];
       patch(reply.id, {
         ...(sh.note ? { shielded: sh.note } : {}),
         youWrote: promptFor(text),
@@ -408,8 +419,8 @@ export function App() {
         const ms = performance.now() - started;
         steps.push(
           res.where === "device"
-            ? `⚡ Gemini Nano answered · ${fmtMs(ms)}`
-            : `☁ ${res.sources.length ? `Cloud + Google Search (${res.sources.length} sources)` : "Cloud"} · ${fmtMs(ms)}`,
+            ? `Gemini Nano answered · ${fmtMs(ms)}`
+            : `${res.sources.length ? `Cloud + Google Search (${res.sources.length} sources)` : "Cloud"} · ${fmtMs(ms)}`,
         );
         patch(reply.id, {
           text: final,
@@ -430,7 +441,7 @@ export function App() {
         if (d.route === "research" && deviceReady && final.length > 400) {
           try {
             const summary = await summariseOnDevice(final);
-            patch(reply.id, { summary, summaryWhere: "device", trail: [...steps, "⚡ Summary card written on your device"] });
+            patch(reply.id, { summary, summaryWhere: "device", trail: [...steps, "Summary card written on your device"] });
             setStats((s) => ({ ...s, device: s.device + 1 }));
           } catch {
             /* the full answer is already there */
@@ -458,10 +469,10 @@ export function App() {
           <span className="brand__sub">for Chrome</span>
         </button>
         <button className="barbtn" onClick={newChat} title="Start a new chat">
-          ＋ New
+          New
         </button>
         <button className={`barbtn ${panel ? "on" : ""}`} aria-expanded={panel} onClick={() => setPanel((v) => !v)} title="Your saved chats (kept on this device only)">
-          ☰ History{saved.length ? ` · ${saved.length}` : ""}
+          History{saved.length ? ` · ${saved.length}` : ""}
         </button>
         <div className="bar__right">
           <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
@@ -479,7 +490,7 @@ export function App() {
             ))}
           </div>
           <button className={`shieldbtn ${shieldOn ? "on" : ""}`} aria-pressed={shieldOn} onClick={() => setShieldOn((v) => !v)} title="Hide personal details on the device before anything goes to the cloud">
-            🛡 Shield {shieldOn ? "on" : "off"}
+            Shield {shieldOn ? "on" : "off"}
           </button>
         </div>
       </header>
@@ -493,7 +504,7 @@ export function App() {
               ×
             </button>
           </div>
-          <p className="history__note">🔒 Saved only on this device. Never sent to the cloud.</p>
+          <p className="history__note">Saved only on this device. Never sent to the cloud.</p>
           {!historyOn ? (
             <p className="history__empty">Saving is off. Turn it on to keep your chats here.</p>
           ) : saved.length === 0 ? (
@@ -509,7 +520,7 @@ export function App() {
                     </span>
                   </button>
                   <button className="history__del" aria-label={`Delete “${c.title}”`} title="Delete" onClick={() => deleteChat(c.id)}>
-                    🗑
+                    Delete
                   </button>
                 </li>
               ))}
@@ -539,7 +550,7 @@ export function App() {
 
       {!online && (
         <div className="offline" role="status">
-          📴 You're offline. {status === "available" ? "Still thinking on your device with Gemini Nano." : "Calculations still work; answers need the on-device model or a connection."}
+          You're offline. {status === "available" ? "Still thinking on your device with Gemini Nano." : "Calculations still work; answers need the on-device model or a connection."}
         </div>
       )}
 
@@ -573,37 +584,54 @@ export function App() {
                 <article key={m.id} className={`msg msg--rook ${m.pending ? "msg--pending" : ""}`}>
                   <div className="msg__head">
                     <Mark size={20} />
-                    {m.where ? <Badge where={m.where} route={m.route} /> : m.pending ? <span className="badge badge--wait">Thinking…</span> : null}
+                    {m.where ? (
+                      <span title={m.reason}>
+                        <Badge where={m.where} route={m.route} />
+                      </span>
+                    ) : m.pending ? (
+                      <span className="badge badge--wait">Thinking…</span>
+                    ) : null}
+                    {m.shielded && (
+                      <span className="badge badge--shield" title={m.shielded}>
+                        Protected
+                      </span>
+                    )}
                     {m.ms != null && <span className="msg__ms">{m.ms < 1000 ? `${m.ms} ms` : `${(m.ms / 1000).toFixed(1)} s`}</span>}
                   </div>
-                  {m.reason && <p className="msg__why">{m.reason}</p>}
-                  {m.shielded && <p className="msg__shield">🛡 {m.shielded}</p>}
                   {m.error && <p className="msg__error">{m.error}</p>}
+                  {m.note && <p className="msg__note">{m.note}</p>}
                   {(!m.error || m.text) && <Markdown text={m.text || (m.pending ? "…" : "")} />}
-                  {m.trail && m.trail.length > 0 && (
-                    <ol className="trail" aria-label="How ROOK answered">
-                      {m.trail.map((step, i) => (
-                        <li key={i}>{step}</li>
-                      ))}
-                    </ol>
-                  )}
-                  {!m.pending && (m.draft || m.cloudSaw != null || (m.where === "device" && asked.current.has(m.id))) && (
+                  {!m.pending && (m.trail?.length || m.cloudSaw != null || (m.where === "device" && asked.current.has(m.id))) ? (
                     <div className="msg__tools">
-                      {m.cloudSaw != null && (
-                        <button className={`mini ${xray[m.id] ? "on" : ""}`} aria-expanded={Boolean(xray[m.id])} onClick={() => setXray((x) => ({ ...x, [m.id]: !x[m.id] }))}>
-                          👁 What the cloud saw
+                      {m.trail && m.trail.length > 0 && (
+                        <button className={`link ${how[m.id] ? "on" : ""}`} aria-expanded={Boolean(how[m.id])} onClick={() => setHow((x) => ({ ...x, [m.id]: !x[m.id] }))}>
+                          How
                         </button>
                       )}
-                      {m.draft && (
-                        <details className="draft">
-                          <summary>⚡ The device's first answer</summary>
-                          <Markdown text={m.draft} />
-                        </details>
+                      {m.cloudSaw != null && (
+                        <button className={`link ${xray[m.id] ? "on" : ""}`} aria-expanded={Boolean(xray[m.id])} onClick={() => setXray((x) => ({ ...x, [m.id]: !x[m.id] }))}>
+                          What the cloud saw
+                        </button>
                       )}
                       {m.where === "device" && !m.draft && asked.current.has(m.id) && (
-                        <button className="mini" disabled={busy || !online} onClick={() => void improve(m)} title={online ? "The shield cleans it on your device first" : "You're offline"}>
-                          ☁ Ask the cloud to improve this
+                        <button className="link" disabled={busy || !online} onClick={() => void improve(m)} title={online ? "Ask the cloud for a better answer (personal details are hidden first)" : "You're offline"}>
+                          Improve
                         </button>
+                      )}
+                    </div>
+                  ) : null}
+                  {how[m.id] && m.trail && (
+                    <div className="how">
+                      <ol className="trail" aria-label="How ROOK answered">
+                        {m.trail.map((step, i) => (
+                          <li key={i}>{step}</li>
+                        ))}
+                      </ol>
+                      {m.draft && (
+                        <details className="draft">
+                          <summary>The device's first answer</summary>
+                          <Markdown text={m.draft} />
+                        </details>
                       )}
                     </div>
                   )}
@@ -617,20 +645,20 @@ export function App() {
                         <h4>The cloud received</h4>
                         <pre>{highlight(m.cloudSaw)}</pre>
                       </section>
-                      <p className="xray__note">🔒 Real details stayed on this device and were put back into the answer here.{m.draft ? " The cloud also got the device's draft (shielded the same way) to improve." : ""}</p>
+                      <p className="xray__note">Your real details never left this device.</p>
                     </div>
                   )}
                   {(m.summary || m.sources) && (
                     <div className="cards">
                       {m.summary && (
                         <section className="rcard">
-                          <h4>Summary <span className="rcard__where">⚡ on your device</span></h4>
+                          <h4>Summary <span className="rcard__where">on your device</span></h4>
                           <p className="rcard__summary">{m.summary}</p>
                         </section>
                       )}
                       {m.sources && (
                         <section className="rcard">
-                          <h4>{m.sources.length} sources <span className="rcard__where">☁ Google Search</span></h4>
+                          <h4>{m.sources.length} sources <span className="rcard__where">Google Search</span></h4>
                           <ul>
                             {m.sources.slice(0, 6).map((s) => (
                               <li key={s.uri}>
@@ -654,17 +682,12 @@ export function App() {
       </main>
 
       <footer className="dock">
-        <div className="stats" aria-label="This session">
-          <span>◆ {stats.instant} instant</span>
-          <span>⚡ {stats.device} on device</span>
-          <span>☁ {stats.cloud} cloud</span>
-          <span>🛡 {stats.hidden} details kept private</span>
-          {stats.avoided > 0 && (
-            <span className="stats__saved" title="Questions answered without any cloud call. Rough tokens: about 4 characters each.">
-              💚 {stats.avoided} cloud call{stats.avoided === 1 ? "" : "s"} avoided · ≈{stats.tokensKept.toLocaleString()} tokens never left this device
-            </span>
-          )}
-        </div>
+        {(stats.avoided > 0 || stats.hidden > 0) && (
+          <div className="stats" aria-label="This session" title={`${stats.instant} instant · ${stats.device} on device · ${stats.cloud} cloud · ≈${stats.tokensKept.toLocaleString()} tokens kept on this device`}>
+            {stats.avoided > 0 && <span className="stats__saved">{stats.avoided} answered without the cloud</span>}
+            {stats.hidden > 0 && <span>{stats.hidden} detail{stats.hidden === 1 ? "" : "s"} kept private</span>}
+          </div>
+        )}
         <form
           className="composer"
           onSubmit={(e) => {
@@ -713,10 +736,10 @@ export function App() {
                   .catch(() => undefined)
               }
             >
-              ◉ Look at my screen
+              Look at my screen
             </button>
             <button type="button" className="tool" onClick={() => fileInput.current?.click()}>
-              ＋ Image
+              Image
             </button>
             <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then(setImage)} />
             <span className="spacer" />
@@ -738,11 +761,11 @@ export function App() {
 
 function DeviceChip({ status, progress, onPrepare }: { status: DeviceStatus; progress: number | null; onPrepare: () => void }) {
   if (progress !== null) return <span className="chip chip--busy">Downloading on-device model… {Math.round(progress * 100)}%</span>;
-  if (status === "available") return <span className="chip chip--ok">⚡ On-device model ready</span>;
+  if (status === "available") return <span className="chip chip--ok">On-device model ready</span>;
   if (status === "downloadable" || status === "downloading")
     return (
       <button className="chip chip--action" onClick={onPrepare}>
-        ⤓ Get on-device model
+        Get on-device model
       </button>
     );
   return (

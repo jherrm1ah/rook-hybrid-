@@ -24,6 +24,7 @@ export interface SavedMessage {
   youWrote?: string;
   draft?: string;
   confidence?: number;
+  note?: string;
 }
 
 export interface Conversation {
