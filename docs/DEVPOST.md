@@ -83,7 +83,7 @@ firebase, firebase-ai-logic, gemini-nano, gemini, chrome-built-in-ai, firebase-a
 
 ## Links
 
-- Try it: https://jherrm1ah.github.io/rook-hybrid-/ (backup: https://rook-hybrid.vercel.app)
+- Try it: https://rook-hybrid.vercel.app (also: https://jherrm1ah.github.io/rook-hybrid-/)
 - Code: https://github.com/jherrm1ah/rook-hybrid-
 
 ## Note for judges
