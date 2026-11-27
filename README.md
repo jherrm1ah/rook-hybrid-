@@ -32,6 +32,9 @@ The cloud model writes "Dear [NAME_1]…"; you read "Dear Tolu…". The answer c
 
 ## Features
 
+- **Float**: one tap puts ROOK in a small always-on-top window (Chrome's Document Picture-in-Picture) so it stays beside any app; the chat carries on, and it comes back to the page when closed.
+- **Result cards on research**: Sources, Summary, Findings, Data and Next steps emerge one by one beside the report, each tied to its section by a thin line (a swipeable strip on phones). Built from the answer itself: no AI, no network. Copy, open in the report, or save to the current project.
+
 - **The ROOK desktop look**: the black "What should ROOK get done?" card, tiles for Ask, Look, Scan, Record and Follow, an icon-only bar, round buttons, and Project and Auto pickers in the message box.
 - **Scan**: take a photo with the camera; Gemini Nano reads it on the device.
 - **Record**: speak a voice note or a meeting; Chrome turns speech into text (on the device when it can) and ROOK writes the summary, key points and action items.

@@ -7,7 +7,7 @@ import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
 import { LookFlash, RookBird, RookLabel } from "./rook/RookBird";
 import { Onboarding, onboarded } from "./Onboarding";
-import { IconArrowUp, IconCapture, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
+import { IconArrowUp, IconCapture, IconExpand, IconShrink, IconCheck, IconCopy, IconEdit, IconExternal, IconFolder, IconGlobe, IconHistory, IconLive, IconMic, IconPlus, IconShield, IconSpark, IconStop, IconZap } from "./Icons";
 import { Home, type Example } from "./Home";
 import { Camera } from "./Camera";
 import { CropModal, crop } from "./CropModal";
@@ -15,6 +15,7 @@ import { LookMenu, type LookKind } from "./LookMenu";
 import { Picker } from "./Pickers";
 import { ProjectsPanel } from "./ProjectsPanel";
 import { ResultCards } from "./ResultCards";
+import { canFloat, float, unfloat } from "./float";
 import * as projects from "./projects";
 import { canListen, listen } from "./voice";
 
@@ -309,6 +310,15 @@ export function App() {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const scroller = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const [floating, setFloating] = useState(false);
+  const toggleFloat = () => {
+    if (floating) return unfloat();
+    setPanel(false);
+    setProjPanel(false);
+    void float(() => setFloating(false))
+      .then((ok) => ok && setFloating(true))
+      .catch(() => undefined);
+  };
   const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1100px)").matches);
   useEffect(() => {
     const q = matchMedia("(min-width: 1100px)");
@@ -680,7 +690,7 @@ export function App() {
 
   // Result cards: for the latest research-style answer (a report with sections).
   const cardMsg = [...msgs].reverse().find((m) => m.role === "rook" && !m.pending && !m.error && (m.route === "research" || (m.text.match(/^#{1,4}\s/gm)?.length ?? 0) >= 3));
-  const railOn = Boolean(cardMsg) && wide;
+  const railOn = Boolean(cardMsg) && wide && !floating;
   const saveCard = project
     ? (title: string, text: string) => {
         if (!kv) return;
@@ -726,6 +736,16 @@ export function App() {
             <IconHistory size={18} />
             {saved.length > 0 && <span className="ibtn__count">{saved.length}</span>}
           </button>
+          {canFloat() && (
+            <button
+              className={`ibtn ${floating ? "on" : ""}`}
+              onClick={toggleFloat}
+              title={floating ? "Put ROOK back in the page" : "Float: keep ROOK on top of your other apps"}
+              aria-label={floating ? "Stop floating" : "Float"}
+            >
+              {floating ? <IconShrink size={17} /> : <IconExpand size={17} />}
+            </button>
+          )}
           <span className="bar__sep" />
           <button
             className={`ibtn ibtn--shield ${shieldOn ? "on" : ""}`}
@@ -928,7 +948,7 @@ export function App() {
                       <p className="xray__note">Your real details never left this device.</p>
                     </div>
                   )}
-                  {!wide && cardMsg?.id === m.id && (
+                  {(!wide || floating) && cardMsg?.id === m.id && (
                     <ResultCards id={m.id} text={m.text} sources={m.sources} summary={m.summary} rail={false} onSave={saveCard} saveLabel={project ? `Save to ${project.name}` : undefined} />
                   )}
                   {m.summary && (

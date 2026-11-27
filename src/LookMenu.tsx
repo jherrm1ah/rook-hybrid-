@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { activeDocument } from "./float";
 import { IconRegion, IconScreen, IconWindow } from "./Icons";
 
 export type LookKind = "screen" | "window" | "region";
@@ -10,12 +11,13 @@ export function LookMenu({ up = false, onPick, onClose }: { up?: boolean; onPick
   useEffect(() => {
     const away = (e: MouseEvent) => !root.current?.contains(e.target as Node) && onClose();
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const t = setTimeout(() => addEventListener("mousedown", away));
-    addEventListener("keydown", esc);
+    const doc = activeDocument();
+    const t = setTimeout(() => doc.addEventListener("mousedown", away));
+    doc.addEventListener("keydown", esc);
     return () => {
       clearTimeout(t);
-      removeEventListener("mousedown", away);
-      removeEventListener("keydown", esc);
+      doc.removeEventListener("mousedown", away);
+      doc.removeEventListener("keydown", esc);
     };
   }, [onClose]);
   const item = (k: LookKind, icon: ReactNode, label: string, hint: string) => (
@@ -28,7 +30,8 @@ export function LookMenu({ up = false, onPick, onClose }: { up?: boolean; onPick
     </button>
   );
   // On phones it's a sheet at the bottom of the screen (outside any animated parent).
-  const sheet = typeof matchMedia !== "undefined" && matchMedia("(max-width: 640px)").matches;
+  const view = activeDocument().defaultView ?? window;
+  const sheet = view.matchMedia("(max-width: 640px)").matches;
   const menu = (
     <div ref={root} className={`lookmenu ${up ? "lookmenu--up" : ""} ${sheet ? "lookmenu--sheet" : ""}`} role="menu" aria-label="Look at">
       {item("screen", <IconScreen size={17} />, "Full screen", "Everything on this display")}
@@ -36,5 +39,5 @@ export function LookMenu({ up = false, onPick, onClose }: { up?: boolean; onPick
       {item("region", <IconRegion size={17} />, "Select region", "Drag to choose an area")}
     </div>
   );
-  return sheet ? createPortal(<div className="lookmenu-scrim">{menu}</div>, document.body) : menu;
+  return sheet ? createPortal(<div className="lookmenu-scrim">{menu}</div>, activeDocument().body) : menu;
 }

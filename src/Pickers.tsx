@@ -34,11 +34,12 @@ export function Picker<T extends string>({
     if (!open) return;
     const away = (e: MouseEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
     const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    addEventListener("mousedown", away);
-    addEventListener("keydown", esc);
+    const doc = root.current?.ownerDocument ?? document;
+    doc.addEventListener("mousedown", away);
+    doc.addEventListener("keydown", esc);
     return () => {
-      removeEventListener("mousedown", away);
-      removeEventListener("keydown", esc);
+      doc.removeEventListener("mousedown", away);
+      doc.removeEventListener("keydown", esc);
     };
   }, [open]);
   return (
