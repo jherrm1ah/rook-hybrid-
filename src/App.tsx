@@ -3,6 +3,7 @@ import { CLOUD_MODEL, configured, deviceStatus, findNamesOnDevice, prepareDevice
 import { Markdown } from "./Markdown";
 import { decide, promptFor, type Mode, type Route } from "./router";
 import { describeCounts, shieldFound, shieldPatterns, unshield, type Shielded } from "./shield";
+import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
 
 interface Msg {
@@ -93,9 +94,59 @@ export function App() {
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Saved conversations: on this device only (browser storage), never sent anywhere.
+  const store = typeof localStorage !== "undefined" ? localStorage : null;
+  const [convId, setConvId] = useState(uid);
+  const [saved, setSaved] = useState<history.Conversation[]>(() => (store ? history.load(store) : []));
+  const [historyOn, setHistoryOn] = useState(() => (store ? history.isOn(store) : false));
+  const [panel, setPanel] = useState(false);
+
   useEffect(() => {
     void deviceStatus().then(setStatus);
   }, []);
+  // Save the conversation whenever an answer has finished (not while it's still being written).
+  useEffect(() => {
+    if (!store || !historyOn || msgs.some((m) => m.pending)) return;
+    if (!msgs.length) return;
+    // Only when something changed: just opening an old chat doesn't move it to the top.
+    const before = history.load(store).find((c) => c.id === convId);
+    if (before && before.messages.length === msgs.length && before.messages.at(-1)?.text === msgs.at(-1)?.text) return;
+    setSaved(history.save(store, convId, msgs as history.SavedMessage[]));
+  }, [msgs, convId, historyOn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const newChat = () => {
+    abort.current?.abort();
+    setMsgs([]);
+    setConvId(uid());
+    setInput("");
+    setImage(undefined);
+    setPanel(false);
+  };
+  const openChat = (c: history.Conversation) => {
+    abort.current?.abort();
+    setMsgs(c.messages.map((m) => ({ ...m, pending: false })) as Msg[]);
+    setConvId(c.id);
+    setPanel(false);
+  };
+  const deleteChat = (id: string) => {
+    if (!store) return;
+    setSaved(history.remove(store, id));
+    if (id === convId) {
+      // The open chat was deleted: start fresh, but keep the panel open.
+      abort.current?.abort();
+      setMsgs([]);
+      setConvId(uid());
+    }
+  };
+  const toggleHistory = () => {
+    if (!store) return;
+    const next = !historyOn;
+    if (!next && !confirm("Stop saving chats? This also deletes the chats saved on this device.")) return;
+    history.setOn(store, next);
+    setHistoryOn(next);
+    if (!next) setSaved([]);
+    else setSaved(history.save(store, convId, msgs as history.SavedMessage[]));
+  };
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [msgs]);
@@ -229,11 +280,17 @@ export function App() {
   return (
     <div className="shell">
       <header className="bar">
-        <div className="brand">
+        <button className="brand" onClick={newChat} title="New chat">
           <Mark size={26} />
           <span className="brand__word">ROOK</span>
           <span className="brand__sub">for Chrome</span>
-        </div>
+        </button>
+        <button className="barbtn" onClick={newChat} title="Start a new chat">
+          ＋ New
+        </button>
+        <button className={`barbtn ${panel ? "on" : ""}`} aria-expanded={panel} onClick={() => setPanel((v) => !v)} title="Your saved chats (kept on this device only)">
+          ☰ History{saved.length ? ` · ${saved.length}` : ""}
+        </button>
         <div className="bar__right">
           <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
           <div className="seg" role="radiogroup" aria-label="Where ROOK thinks">
@@ -254,6 +311,59 @@ export function App() {
           </button>
         </div>
       </header>
+
+      {panel && (
+        <div className="history-anchor">
+        <aside className="history" aria-label="Saved chats">
+          <div className="history__head">
+            <h2>Your chats</h2>
+            <button className="history__close" aria-label="Close" onClick={() => setPanel(false)}>
+              ×
+            </button>
+          </div>
+          <p className="history__note">🔒 Saved only on this device. Never sent to the cloud.</p>
+          {!historyOn ? (
+            <p className="history__empty">Saving is off. Turn it on to keep your chats here.</p>
+          ) : saved.length === 0 ? (
+            <p className="history__empty">No saved chats yet. Ask ROOK something and it appears here.</p>
+          ) : (
+            <ul className="history__list">
+              {saved.map((c) => (
+                <li key={c.id} className={c.id === convId ? "current" : ""}>
+                  <button className="history__item" onClick={() => openChat(c)}>
+                    <span className="history__title">{c.title}</span>
+                    <span className="history__meta">
+                      {history.when(c.updatedAt)} · {c.messages.filter((m) => m.role === "user").length} question{c.messages.filter((m) => m.role === "user").length === 1 ? "" : "s"}
+                    </span>
+                  </button>
+                  <button className="history__del" aria-label={`Delete “${c.title}”`} title="Delete" onClick={() => deleteChat(c.id)}>
+                    🗑
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="history__foot">
+            <label className="history__toggle">
+              <input type="checkbox" checked={historyOn} onChange={toggleHistory} /> Save chats on this device
+            </label>
+            {historyOn && saved.length > 0 && (
+              <button
+                className="history__clear"
+                onClick={() => {
+                  if (store && confirm("Delete all saved chats on this device?")) {
+                    history.clearAll(store);
+                    setSaved([]);
+                  }
+                }}
+              >
+                Delete all
+              </button>
+            )}
+          </div>
+        </aside>
+        </div>
+      )}
 
       <main className="workspace">
         {msgs.length === 0 ? (

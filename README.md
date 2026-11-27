@@ -38,6 +38,8 @@ The cloud model writes "Dear [NAME_1]…"; you read "Dear Tolu…". The answer c
 - Paste or attach images.
 - Mode switch: **Auto / Private / Cloud**; **Shield on/off**.
 - On-device model status, with a one-click **Get on-device model** download (`initializeDeviceModel` with progress).
+- **Saved chats, on this device only**: History panel (open, delete, delete all), New chat, and an on/off switch.
+  Chats live in the browser's storage; nothing about your history is sent to the cloud.
 - Session counter: how many answers were instant, on-device or in the cloud, and how many details stayed private.
 - **App Check** (reCAPTCHA Enterprise; debug tokens for local testing) on every call.
 
@@ -77,6 +79,7 @@ putting details back).
 - `src/router.ts`: the routing decision (pure, tested)
 - `src/shield.ts`: Privacy Shield patterns, placeholders and restore (pure, tested)
 - `src/ai.ts`: Firebase app, App Check, and the four Firebase AI Logic models (hybrid / device / cloud / research)
+- `src/history.ts`: saved chats on the device (pure, tested)
 - `src/App.tsx`: the interface
 - `src/vendor/`: shared with the ROOK desktop app (its instant on-device calculator and the ROOK symbol)
 
