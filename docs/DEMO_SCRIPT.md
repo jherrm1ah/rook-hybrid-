@@ -67,4 +67,4 @@ SAY: "ROOK keeps count: how many questions never needed the cloud, and how many 
 
 - If the cloud is slow during recording, just record that scene again. Cut the pauses when editing.
 - Keep the browser zoomed to 110 to 125 percent so text is readable in the video.
-- Upload to YouTube as Unlisted (or Public) and paste the link into Devpost.
+- Upload to YouTube as **Public** (the rules require a public video, under 3 minutes) and paste the link into Devpost.

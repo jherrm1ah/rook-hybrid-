@@ -5,6 +5,20 @@ ROOK for Chrome answers on your own computer with **Gemini Nano** whenever it ca
 cloud** only when a task needs it, and **hides your personal details on the device** before anything goes to the cloud.
 All AI runs through **Firebase AI Logic** hybrid inference.
 
+## For judges: try it in 2 minutes
+
+**Live:** https://rook-hybrid.vercel.app (no account, no payment).
+
+1. Use **desktop Chrome** for the full hybrid experience. To get Gemini Nano on the device, click **Get Gemini Nano**
+   in the top bar (or open `chrome://on-device-internals` to check it's available). Without it, ROOK still works,
+   using the cloud for everything except instant answers, and says "Cloud only" in the top bar.
+2. Tap **Make a message friendlier**: answered by Gemini Nano on your device (badge: *On your device*).
+3. Tap **Draft a reply about VAT**: Nano answers, grades itself, isn't sure, so the Privacy Shield hides the name and
+   email and the cloud improves it. Tap **What the cloud saw** to see exactly what left the device.
+4. Turn off your Wi-Fi and ask something: ROOK keeps answering on the device.
+5. Tap **Float** (two arrows, top bar): ROOK becomes an icon on top of every tab and app. Open another site and tap
+   **Look** on the icon.
+
 ## How the hybrid works
 
 Every request is routed to the cheapest place that can do it well, and each answer shows where it ran
@@ -90,6 +104,29 @@ npm test
 
 Covers the router (which route, and why) and the Privacy Shield (hiding, consistent placeholders across turns,
 putting details back).
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+## What we built, and what we reused
+
+Everything in this repository was written for this hackathon, except these pieces, which come from our own earlier
+ROOK desktop app (Orynthra Labs) and were adapted for the web:
+
+- `src/vendor/calc.ts`: the instant calculator (percentages, conversions) used for "Instant, no AI" answers.
+- `src/vendor/symbol.ts`: the ROOK logo shape.
+- `src/rook/motion.tsx` and the living-bird animation in `src/rook/RookBird.tsx`; the icon set in `src/Icons.tsx`.
+- The look of the home screen, Scan viewfinder, Look scan and result cards follows the ROOK desktop app's design.
+
+Open-source libraries: React, Vite, TypeScript and the Firebase JS SDK (see `package.json`). The code was written with
+the help of AI coding assistants, as the rules allow.
+
+## About the keys in this repository
+
+`.env.production` holds the Firebase web app config and the reCAPTCHA site key. These are **public by design**: they
+identify the app in the browser, and Firebase App Check (reCAPTCHA) protects the AI endpoints from misuse. No secret
+keys, service-account files or debug tokens are in this repository.
 
 ## Code map
 
