@@ -5,6 +5,10 @@ import { decide, improvePrompt, parseGrade, promptFor, shouldEscalate, tokensIn,
 import { describeCounts, shieldFound, shieldPatterns, unshield, type Shielded } from "./shield";
 import * as history from "./history";
 import { ROOK_SYMBOL } from "./vendor/symbol.ts";
+import { LookFlash, RookBird, RookLabel } from "./rook/RookBird";
+import { Onboarding, onboarded } from "./Onboarding";
+import { IconArrowUp, IconCapture, IconCheck, IconCopy, IconGlobe, IconHistory, IconMic, IconPlus, IconStop } from "./Icons";
+import { canListen, listen } from "./voice";
 
 interface Msg {
   id: string;
@@ -32,7 +36,12 @@ interface Msg {
   confidence?: number;
   /** A short, quiet remark (not an error). */
   note?: string;
+  /** What ROOK is doing right now (drives the living bird while it works). */
+  stage?: Stage;
 }
+
+type Stage = "looking" | "thinking" | "drafting" | "checking" | "guarding" | "seeking" | "gathering";
+const VERB: Record<Stage, string> = { looking: "Looking", thinking: "Thinking", drafting: "Drafting", checking: "Checking", guarding: "Guarding", seeking: "Seeking", gathering: "Gathering" };
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const fmtMs = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
@@ -125,6 +134,49 @@ export function App() {
   const asked = useRef(new Map<string, { turns: Turn[]; question: string }>());
   const [xray, setXray] = useState<Record<string, boolean>>({});
   const [how, setHow] = useState<Record<string, boolean>>({});
+  const [flash, setFlash] = useState<Turn["image"]>();
+  const [tour, setTour] = useState(() => !onboarded());
+  const [web, setWeb] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const stopListening = useRef<(() => void) | null>(null);
+  const attach = (img: Turn["image"]) => {
+    setImage(img);
+    setFlash(img);
+  };
+  const look = () =>
+    void captureScreen()
+      .then((img) => {
+        attach(img);
+        setInput((t) => t || "Explain what's on my screen and what I should do next.");
+      })
+      .catch(() => undefined);
+  const mic = async () => {
+    if (listening) {
+      stopListening.current?.();
+      return;
+    }
+    const before = input ? `${input.trimEnd()} ` : "";
+    try {
+      setListening(true);
+      stopListening.current = await listen(
+        (heard) => setInput(before + heard),
+        (err) => {
+          setListening(false);
+          stopListening.current = null;
+          if (err) alert(err);
+        },
+      );
+    } catch (e) {
+      setListening(false);
+      alert((e as Error).message);
+    }
+  };
+  const copy = (m: Msg) =>
+    void navigator.clipboard?.writeText(m.text).then(() => {
+      setCopied(m.id);
+      setTimeout(() => setCopied((c) => (c === m.id ? null : c)), 1500);
+    });
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -241,6 +293,7 @@ export function App() {
   /** The cloud improves an answer the device wasn't sure about (shielded first). */
   const escalate = async (replyId: string, turns: Turn[], draft: string, trail: string[], started: number, why: string) => {
     const deviceReady = status === "available";
+    patch(replyId, { pending: true, stage: shieldOn ? "guarding" : "seeking" });
     const sh = await shieldTurns(turns, deviceReady, draft);
     const sent: Turn[] = [...sh.turns, { role: "user", text: improvePrompt(sh.extra ?? draft) }];
     const steps = [...trail, ...(sh.hidden ? [`Shield hid ${sh.what}`] : []), "Cloud improving…"];
@@ -250,6 +303,7 @@ export function App() {
       text: "",
       pending: true,
       reason: why,
+      stage: "seeking",
       trail: steps,
       youWrote: turns.filter((t) => t.role === "user").at(-1)?.text ?? "",
       cloudSaw: sent.filter((t) => t.role === "user").slice(-2).map((t) => t.text).join("\n\n"),
@@ -260,7 +314,7 @@ export function App() {
     setBusy(true);
     const t0 = performance.now();
     try {
-      const onText = (soFar: string) => patch(replyId, { text: unshield(soFar, sh.vault) });
+      const onText = (soFar: string) => patch(replyId, { text: unshield(soFar, sh.vault), stage: "drafting" });
       let res;
       try {
         res = await streamAnswer("cloud", sent, onText, ctrl.signal);
@@ -302,8 +356,10 @@ export function App() {
 
   const send = useCallback(
     async (raw?: string) => {
-      const text = (raw ?? input).trim();
+      stopListening.current?.();
+      let text = (raw ?? input).trim();
       if ((!text && !image) || busy) return;
+      if (web && raw === undefined && text && !/^\/research\b/i.test(text)) text = `/research ${text}`;
       const deviceReady = status === "available";
       const d = decide(text, { mode, hasImage: Boolean(image), deviceReady });
       // Offline: nothing can reach the cloud, so ROOK keeps thinking on the device.
@@ -313,7 +369,7 @@ export function App() {
         d.reason = "You're offline → answering on your device";
       }
       const user: Msg = { id: uid(), role: "user", text, ...(image ? { image } : {}) };
-      const reply: Msg = { id: uid(), role: "rook", text: "", route: d.route, reason: d.reason, pending: true };
+      const reply: Msg = { id: uid(), role: "rook", text: "", route: d.route, reason: d.reason, pending: true, stage: image ? "looking" : "thinking" };
       setMsgs((list) => [...list, user, reply]);
       setInput("");
       setImage(undefined);
@@ -352,7 +408,7 @@ export function App() {
         let draft = "";
         let trail: string[] = [];
         try {
-          const res = await streamAnswer("device", turns, (soFar) => patch(reply.id, { text: soFar }), ctrl.signal);
+          const res = await streamAnswer("device", turns, (soFar) => patch(reply.id, { text: soFar, stage: "drafting" }), ctrl.signal);
           draft = res.text;
           const nanoMs = performance.now() - started;
           trail = [`Gemini Nano answered · ${fmtMs(nanoMs)}`];
@@ -362,7 +418,7 @@ export function App() {
             setStats((s) => ({ ...s, device: s.device + 1, avoided: s.avoided + 1, tokensKept: s.tokensKept + tokensIn(text + draft) }));
             return;
           }
-          patch(reply.id, { text: draft, where: "device", trail: [...trail, "Checking its own answer…"] });
+          patch(reply.id, { text: draft, stage: "checking", trail: [...trail, "Checking its own answer…"] });
           let grade: Grade;
           try {
             grade = parseGrade(await gradeOnDevice(text, draft));
@@ -393,6 +449,7 @@ export function App() {
       }
 
       // Privacy Shield: anything that may reach the cloud is cleaned on the device first.
+      if (shieldOn && !image) patch(reply.id, { stage: "guarding" });
       const sh = await shieldTurns(turns, deviceReady);
       const vault = sh.vault;
       if (sh.hidden) setStats((st) => ({ ...st, hidden: st.hidden + sh.hidden }));
@@ -401,6 +458,7 @@ export function App() {
         ...(sh.note ? { shielded: sh.note } : {}),
         youWrote: promptFor(text),
         cloudSaw: sh.turns.at(-1)?.text ?? "",
+        stage: image ? "looking" : d.route === "research" ? "gathering" : "seeking",
       });
 
       const which = d.route === "research" ? "research" : d.route === "cloud" ? "cloud" : "hybrid";
@@ -408,7 +466,7 @@ export function App() {
       abort.current = ctrl;
       setBusy(true);
       try {
-        const onText = (soFar: string) => patch(reply.id, { text: unshield(soFar, vault) });
+        const onText = (soFar: string) => patch(reply.id, { text: unshield(soFar, vault), stage: "drafting" });
         let res;
         try {
           res = await streamAnswer(which, sh.turns, onText, ctrl.signal);
@@ -458,7 +516,7 @@ export function App() {
         abort.current = null;
       }
     },
-    [input, image, busy, status, mode, msgs, shieldOn, online], // eslint-disable-line react-hooks/exhaustive-deps
+    [input, image, busy, status, mode, msgs, shieldOn, online, web], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!configured) return <Setup />;
@@ -472,10 +530,10 @@ export function App() {
           <span className="brand__sub">for Chrome</span>
         </button>
         <button className="barbtn" onClick={newChat} title="Start a new chat">
-          New
+          <IconPlus size={15} /> New
         </button>
         <button className={`barbtn ${panel ? "on" : ""}`} aria-expanded={panel} onClick={() => setPanel((v) => !v)} title="Your saved chats (kept on this device only)">
-          History{saved.length ? ` · ${saved.length}` : ""}
+          <IconHistory size={15} /> History{saved.length ? ` · ${saved.length}` : ""}
         </button>
         <div className="bar__right">
           <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
@@ -560,7 +618,7 @@ export function App() {
       <main className="workspace">
         {msgs.length === 0 ? (
           <section className="hero">
-            <Mark size={56} />
+            <RookBird behavior="watching" size={64} />
             <h1>Thinks on your device first.</h1>
             <p>
               ROOK answers on your computer with <strong>Gemini Nano</strong> whenever it can: private, instant and free. It reaches for the <strong>cloud</strong> only when a task needs
@@ -578,22 +636,25 @@ export function App() {
           </section>
         ) : (
           <div className="thread">
-            {msgs.map((m) =>
+            {msgs.map((m, i) =>
               m.role === "user" ? (
                 <div key={m.id} className="msg msg--user">
-                  {m.image && <img className="msg__img" src={`data:${m.image.mimeType};base64,${m.image.data}`} alt="Shared screen" />}
+                  {m.image && (
+                    <div className={`msg__img-wrap ${msgs[i + 1]?.pending ? "msg__img-wrap--scan" : ""}`}>
+                      <img className="msg__img" src={`data:${m.image.mimeType};base64,${m.image.data}`} alt="Shared screen" />
+                    </div>
+                  )}
                   {m.text && <div className="bubble">{m.text}</div>}
                 </div>
               ) : (
                 <article key={m.id} className={`msg msg--rook ${m.pending ? "msg--pending" : ""}`}>
                   <div className="msg__head">
-                    <Mark size={20} />
-                    {m.where ? (
+                    {m.pending ? <RookBird behavior={m.stage ?? "thinking"} size={30} showAura /> : <Mark size={20} />}
+                    {m.pending && <RookLabel verb={VERB[m.stage ?? "thinking"]} />}
+                    {m.pending ? null : m.where ? (
                       <span title={m.reason}>
                         <Badge where={m.where} route={m.route} />
                       </span>
-                    ) : m.pending ? (
-                      <span className="badge badge--wait">Thinking…</span>
                     ) : null}
                     {m.shielded && (
                       <span className="badge badge--shield" title={m.shielded}>
@@ -605,8 +666,11 @@ export function App() {
                   {m.error && <p className="msg__error">{m.error}</p>}
                   {m.note && <p className="msg__note">{m.note}</p>}
                   {(!m.error || m.text) && <Markdown text={m.text || (m.pending ? "…" : "")} />}
-                  {!m.pending && (m.trail?.length || m.cloudSaw != null || (m.where === "device" && asked.current.has(m.id))) ? (
+                  {!m.pending && m.text ? (
                     <div className="msg__tools">
+                      <button className="link" onClick={() => copy(m)} aria-label="Copy answer">
+                        {copied === m.id ? <IconCheck size={14} /> : <IconCopy size={14} />} {copied === m.id ? "Copied" : "Copy"}
+                      </button>
                       {m.trail && m.trail.length > 0 && (
                         <button className={`link ${how[m.id] ? "on" : ""}`} aria-expanded={Boolean(how[m.id])} onClick={() => setHow((x) => ({ ...x, [m.id]: !x[m.id] }))}>
                           How
@@ -710,7 +774,7 @@ export function App() {
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={mode === "private" ? "Ask privately: stays on this device…" : "Ask anything, or share your screen…"}
+            placeholder={mode === "private" ? "Ask privately: stays on this device…" : web ? "Search the web for…" : "Ask anything, or share your screen…"}
             rows={1}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -722,43 +786,47 @@ export function App() {
               const f = [...e.clipboardData.files].find((x) => x.type.startsWith("image/"));
               if (f) {
                 e.preventDefault();
-                void fileToJpeg(f).then(setImage);
+                void fileToJpeg(f).then(attach);
               }
             }}
           />
           <div className="composer__row">
+            <button type="button" className="tool" title="Share a screen or window: ROOK takes one picture of it" onClick={look}>
+              <IconCapture size={16} /> Look
+            </button>
+            <button type="button" className="tool" title="Add a picture" onClick={() => fileInput.current?.click()}>
+              <IconPlus size={16} /> Image
+            </button>
             <button
               type="button"
-              className="tool"
-              title="Share a screen or window: ROOK takes one picture of it"
-              onClick={() =>
-                void captureScreen()
-                  .then((img) => {
-                    setImage(img);
-                    if (!input) setInput("Explain what's on my screen and what I should do next.");
-                  })
-                  .catch(() => undefined)
-              }
+              className={`iconbtn ${web ? "on" : ""}`}
+              aria-pressed={web}
+              title={web ? "Searching the web: on" : "Search the web for this answer"}
+              onClick={() => setWeb((v) => !v)}
             >
-              Look at my screen
+              <IconGlobe size={17} />
             </button>
-            <button type="button" className="tool" onClick={() => fileInput.current?.click()}>
-              Image
-            </button>
-            <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then(setImage)} />
+            <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void fileToJpeg(e.target.files[0]).then(attach)} />
             <span className="spacer" />
+            {canListen() && (
+              <button type="button" className={`mic ${listening ? "mic--on" : ""}`} aria-pressed={listening} title={listening ? "Stop listening" : "Speak instead of typing"} onClick={() => void mic()}>
+                {listening ? <IconStop size={16} /> : <IconMic size={17} />}
+              </button>
+            )}
             {busy ? (
-              <button type="button" className="send send--stop" onClick={() => abort.current?.abort()}>
-                Stop
+              <button type="button" className="send send--stop" aria-label="Stop" onClick={() => abort.current?.abort()}>
+                <IconStop size={16} />
               </button>
             ) : (
-              <button type="submit" className="send" disabled={!input.trim() && !image}>
-                Send
+              <button type="submit" className="send" aria-label="Send" disabled={!input.trim() && !image}>
+                <IconArrowUp size={18} />
               </button>
             )}
           </div>
         </form>
       </footer>
+      {flash && <LookFlash image={flash} onDone={() => setFlash(undefined)} />}
+      {tour && <Onboarding onLook={look} onDone={() => setTour(false)} />}
     </div>
   );
 }

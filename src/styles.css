@@ -203,3 +203,169 @@ button:disabled { cursor: default; opacity: 0.5; }
 .how .trail { margin: 0; }
 .msg__note { margin: 6px 0 0; font-size: 12.5px; color: var(--faint); }
 .hero__tip { margin-top: 6px !important; font-size: 13px; color: var(--faint) !important; }
+
+
+/* ================= The living rook (components/rook) ================= */
+.rook { overflow: visible; }
+.rook__body { transform-box: view-box; transform-origin: 50px 52px; }
+.rook__wing { transform-box: view-box; }
+/* Wings shear from the joint (the seam between the clipped parts). */
+.rook__wing--l { transform-origin: 37px 50px; }
+.rook__wing--r { transform-origin: 68.2px 52px; }
+
+/* Auras: quiet marks in the symbol's colour. */
+.rook__auras { color: var(--m-symbol, currentColor); }
+.aura { transition: opacity 360ms ease; }
+.aura--in { animation: aura-in 380ms ease both; }
+.aura--out { opacity: 0; }
+@keyframes aura-in { from { opacity: 0; } }
+.aura__stroke { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; opacity: 0.55; vector-effect: non-scaling-stroke; }
+.aura__dot { fill: currentColor; opacity: 0.6; }
+.aura__spin { transform-box: view-box; transform-origin: 50px 50px; animation: aura-spin 3.4s linear infinite; }
+.aura--grind .aura__spin { animation-duration: 2.6s; }
+.aura__dashed { stroke-dasharray: 3 7; opacity: 0.35; }
+.aura__scan { stroke-dasharray: 14 120; animation: aura-scan 3.2s ease-in-out infinite; }
+.aura__draw { stroke-dasharray: 60; stroke-dashoffset: 60; animation: aura-draw 1.8s ease-in-out infinite; }
+.aura__draw--loop { animation-duration: 1.2s; }
+.aura__sweep { transform-box: view-box; transform-origin: 50px 50px; opacity: 0.3; animation: aura-sweep 2.4s ease-in-out infinite; }
+.aura__ring { transform-box: fill-box; transform-origin: center; animation: aura-ring 1.4s ease-out infinite; }
+.aura__ring--late { animation-delay: 0.7s; }
+.aura--pulse .aura__dot { transform-box: fill-box; transform-origin: center; animation: aura-breathe 2.1s ease-in-out infinite; }
+.aura__dash { animation: aura-dash 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) infinite; }
+.aura--catch .aura__dot { animation: aura-catch 1.1s cubic-bezier(0.3, 0, 0.2, 1) infinite; }
+.aura--gather .aura__dot { animation: aura-gather 3s ease-in-out infinite; }
+.aura__dot--1 { animation-delay: 0.15s !important; }
+.aura__dot--2 { animation-delay: 0.3s !important; }
+.aura__dot--3 { animation-delay: 0.45s !important; }
+.aura__rays { transform-box: view-box; transform-origin: 50px 50px; animation: aura-rays 1.6s ease-out infinite; }
+.aura__rays--burst { animation-duration: 1.3s; }
+.aura__mend--l { animation: aura-mend-l 2s ease-in-out infinite; }
+.aura__mend--r { animation: aura-mend-r 2s ease-in-out infinite; }
+.aura__line { opacity: 0.2; animation: aura-line 2.8s ease-in-out infinite; }
+.aura__line--1 { animation-delay: 0.9s; }
+.aura__line--2 { animation-delay: 1.8s; }
+.aura__breathe { animation: aura-breathe-o 4.8s ease-in-out infinite; }
+.aura--shield .aura__breathe { animation-duration: 3.6s; }
+.aura--stack .aura__dot { animation: aura-stack 2.2s ease-out infinite; }
+.aura__sort { animation: aura-sort 1.6s ease-in-out infinite; transform-box: view-box; }
+.aura--trail .aura__dot { animation: aura-trail 3.2s ease-in-out infinite; }
+.aura__block { fill: currentColor; opacity: 0; animation: aura-block 1.5s ease-out infinite; }
+.aura__block--1 { animation-delay: 0.25s; }
+.aura__block--2 { animation-delay: 0.5s; }
+
+@keyframes aura-spin { to { transform: rotate(360deg); } }
+@keyframes aura-scan { 0% { stroke-dashoffset: 0; } 50% { stroke-dashoffset: -40; } 100% { stroke-dashoffset: 0; } }
+@keyframes aura-draw { 0% { stroke-dashoffset: 60; opacity: 0; } 15% { opacity: 0.55; } 60% { stroke-dashoffset: 0; opacity: 0.55; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes aura-sweep { 0%, 100% { transform: rotate(-38deg); } 50% { transform: rotate(38deg); } }
+@keyframes aura-ring { from { transform: scale(1.7); opacity: 0; } 30% { opacity: 0.5; } to { transform: scale(0.5); opacity: 0; } }
+@keyframes aura-breathe { 0%, 100% { transform: scale(0.7); opacity: 0.35; } 50% { transform: scale(1.15); opacity: 0.75; } }
+@keyframes aura-breathe-o { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.55; } }
+@keyframes aura-dash { from { transform: translateX(-14px); opacity: 0; } 40% { opacity: 0.6; } to { transform: translateX(26px); opacity: 0; } }
+@keyframes aura-catch { from { opacity: 0; } 20% { opacity: 0.7; } 70% { opacity: 0.7; } to { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)); } }
+.aura--catch .aura__dot--0 { --tx: 38px; --ty: 26px; }
+.aura--catch .aura__dot--1 { --tx: -38px; --ty: 26px; }
+.aura--catch .aura__dot--2 { --tx: 0px; --ty: -36px; }
+@keyframes aura-gather { 0% { opacity: 0; transform: translate(0, 0); } 30% { opacity: 0.6; } 100% { opacity: 0; transform: translate(var(--tx, 0), var(--ty, 0)); } }
+.aura--gather .aura__dot--0 { --tx: 36px; --ty: 34px; }
+.aura--gather .aura__dot--1 { --tx: -36px; --ty: 34px; }
+.aura--gather .aura__dot--2 { --tx: 36px; --ty: -34px; }
+.aura--gather .aura__dot--3 { --tx: -36px; --ty: -34px; }
+@keyframes aura-rays { from { transform: scale(0.82); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1.12); opacity: 0; } }
+@keyframes aura-mend-l { 0%, 100% { transform: translateX(-4px); } 50% { transform: translateX(0); } }
+@keyframes aura-mend-r { 0%, 100% { transform: translateX(4px); } 50% { transform: translateX(0); } }
+@keyframes aura-line { 0%, 100% { opacity: 0.15; } 30% { opacity: 0.6; } }
+@keyframes aura-stack { 0% { opacity: 0; transform: translateY(6px); } 30%, 80% { opacity: 0.6; transform: none; } 100% { opacity: 0; } }
+@keyframes aura-sort { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+@keyframes aura-trail { 0%, 100% { transform: translateX(0); opacity: 0.25; } 50% { transform: translateX(-4px); opacity: 0.6; } }
+@keyframes aura-block { 0% { opacity: 0; transform: translateY(-6px); } 30%, 80% { opacity: 0.5; transform: none; } 100% { opacity: 0; } }
+
+/* ROOK IS SEEKING: small caps under the bird, the verb sliding in. */
+.rooklabel { display: inline-flex; align-items: baseline; gap: 0.42em; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; line-height: 1; color: var(--muted); white-space: nowrap; }
+.rooklabel__verb { display: inline-grid; color: var(--text); }
+.rooklabel__word { grid-area: 1 / 1; }
+.rooklabel__word--in { animation: verb-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rooklabel__word--out { animation: verb-out 300ms ease both; }
+@keyframes verb-in { from { opacity: 0; transform: translateY(5px); filter: blur(2px); } }
+@keyframes verb-out { to { opacity: 0; transform: translateY(-5px); filter: blur(2px); } }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .aura, .aura * { animation: none !important; }
+  .rooklabel__word--in, .rooklabel__word--out { animation: none; }
+}
+
+/* Colours for the web app */
+.rook__tile { fill: var(--ink); }
+.rook__symbol { fill: #fff; }
+.rook__auras { color: #fff; }
+.rooklabel__who { color: var(--faint); }
+
+/* Look flash (the captured screen, a scan line, then into the tray) */
+.lookflash {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 12px; align-content: center;
+  background: rgba(21, 21, 29, 0.9); animation: lf-fade 1150ms ease forwards;
+}
+.lookflash__frame {
+  position: relative; width: min(820px, 88vw); overflow: hidden; border-radius: 14px; box-shadow: 0 0 0 1.5px var(--teal);
+  animation: lf-settle 1150ms cubic-bezier(0.6, 0, 0.3, 1) forwards; transform-origin: 8% 100%;
+}
+.lookflash__frame img { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+.lookflash__line { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--teal); box-shadow: 0 0 12px var(--teal); animation: lf-scan 700ms cubic-bezier(0.45, 0, 0.55, 1) 80ms both; }
+.lookflash__band { position: absolute; left: 0; right: 0; top: 0; height: 0; background: rgba(0, 209, 178, 0.14); animation: lf-band 700ms cubic-bezier(0.45, 0, 0.55, 1) 80ms both; }
+.lookflash__label { font: 600 10.5px ui-monospace, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #7ff0dd; animation: lf-label 1150ms ease forwards; }
+@keyframes lf-scan { from { top: 0; } to { top: calc(100% - 2px); } }
+@keyframes lf-band { from { height: 0; } to { height: 100%; } }
+@keyframes lf-settle { 0%, 70% { transform: none; opacity: 1; } 100% { transform: scale(0.18) translateY(40%); opacity: 0; } }
+@keyframes lf-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes lf-label { 0%, 65% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .lookflash { display: none; } }
+
+/* While an answer with a picture is being worked on, the picture is scanned */
+.msg__img-wrap { position: relative; overflow: hidden; border-radius: 12px; }
+.msg__img-wrap .msg__img { display: block; }
+.msg__img-wrap--scan::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--teal); box-shadow: 0 0 10px var(--teal); animation: img-scan 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+@keyframes img-scan { from { top: 0; } to { top: calc(100% - 2px); } }
+
+/* Mic */
+.mic { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ice-2); color: var(--text); }
+.mic:hover { background: var(--coral-wash); }
+.mic--on { background: var(--danger); color: #fff; animation: mic-pulse 1.4s ease-in-out infinite; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.45); } 50% { box-shadow: 0 0 0 7px rgba(229, 72, 77, 0); } }
+
+/* First run (from the desktop app) */
+.scrim { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(21, 21, 29, 0.4); animation: rise 200ms ease; }
+.onboard {
+  position: relative; width: min(400px, 100%); padding: 26px 24px 20px; border-radius: 24px; background: var(--card);
+  box-shadow: 0 30px 70px rgba(21, 21, 29, 0.3); display: flex; flex-direction: column; gap: 14px; animation: rise 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.onboard__skip { position: absolute; top: 10px; right: 12px; height: 28px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.onboard__skip:hover { background: var(--ice-2); color: var(--text); }
+.onboard__art { margin-top: 18px; height: 110px; display: grid; place-items: center; border-radius: 18px; background: var(--ice-2); animation: onboard-in 360ms ease; }
+.onboard__icon { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 18px; background: var(--ink); color: #fff; }
+.onboard__icon--teal { background: var(--teal); color: #05241f; }
+.onboard__body { animation: onboard-in 360ms ease 40ms both; }
+@keyframes onboard-in { from { opacity: 0; transform: translateY(8px); } }
+.onboard h2 { margin: 0 0 8px; font-size: 21px; line-height: 1.2; letter-spacing: -0.02em; }
+.onboard p { margin: 0 0 10px; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.onboard__promises { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
+.onboard__promises li { display: flex; align-items: flex-start; gap: 9px; }
+.onboard__promises svg { color: var(--teal-text); flex-shrink: 0; margin-top: 2px; }
+.onboard__foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.onboard__dots { display: flex; gap: 6px; }
+.onboard__dots span { width: 7px; height: 7px; border-radius: 999px; background: var(--line); transition: width 260ms ease, background 200ms; }
+.onboard__dots span.past { background: var(--faint); }
+.onboard__dots span.on { width: 22px; background: var(--ink); }
+@media (prefers-color-scheme: dark) { .onboard__dots span.on { background: #fff; } }
+.onboard__actions { display: flex; gap: 8px; }
+.primary { padding: 9px 18px; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 600; }
+.ghost { padding: 9px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; }
+.ghost:hover { background: var(--ice-2); }
+
+/* Icon buttons (one line-icon family, as on the desktop) */
+.tool { display: inline-flex; align-items: center; gap: 6px; }
+.iconbtn { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ice-2); color: var(--text); }
+.iconbtn:hover:not(:disabled) { background: var(--coral-wash); }
+.iconbtn.on { background: var(--ink); color: #fff; }
+.send { width: 38px; height: 38px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.barbtn { display: inline-flex; align-items: center; gap: 6px; }
+.link { display: inline-flex; align-items: center; gap: 5px; }
