@@ -9,7 +9,7 @@
  * App Check protects every call (required by Firebase AI Logic).
  */
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, ReCaptchaV3Provider } from "firebase/app-check";
 import {
   getAI,
   getGenerativeModel,
@@ -52,8 +52,13 @@ function setup() {
   // App Check: reCAPTCHA Enterprise in production; a registered debug token for local runs and judges.
   const debugToken = env.VITE_APPCHECK_DEBUG_TOKEN as string | undefined;
   if (debugToken || env.DEV) (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN: string | boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken || true;
-  const siteKey = env.VITE_RECAPTCHA_ENTERPRISE_KEY as string | undefined;
-  if (siteKey) initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(siteKey), isTokenAutoRefreshEnabled: true });
+  // reCAPTCHA v3 (free, no billing) or reCAPTCHA Enterprise: whichever key is configured.
+  const v3Key = env.VITE_RECAPTCHA_V3_KEY as string | undefined;
+  const enterpriseKey = env.VITE_RECAPTCHA_ENTERPRISE_KEY as string | undefined;
+  const provider = enterpriseKey ? new ReCaptchaEnterpriseProvider(enterpriseKey) : v3Key ? new ReCaptchaV3Provider(v3Key) : null;
+  // With a debug token, App Check still needs initialising: the debug token then replaces reCAPTCHA.
+  const debugging = Boolean(debugToken || env.DEV);
+  if (provider || debugging) initializeAppCheck(app, { provider: provider ?? new ReCaptchaV3Provider("debug-mode"), isTokenAutoRefreshEnabled: true });
 
   const ai = getAI(app, { backend: new GoogleAIBackend() });
   const onDeviceParams = {
