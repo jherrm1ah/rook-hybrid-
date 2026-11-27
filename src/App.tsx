@@ -665,7 +665,21 @@ export function App() {
           <Mark size={24} />
           <span className="brand__word">ROOK</span>
         </button>
-        <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
+        {camera ? (
+          <span className="chip chip--rec" role="status">
+            <span className="chip__dot" /> Camera on
+          </span>
+        ) : rec ? (
+          <span className="chip chip--rec" role="status">
+            <span className="chip__dot" /> Recording
+          </span>
+        ) : follow ? (
+          <span className="chip chip--ok" role="status">
+            <span className="chip__dot" /> Following
+          </span>
+        ) : (
+          <DeviceChip status={status} progress={progress} onPrepare={() => void prepare()} />
+        )}
         <nav className="bar__icons" aria-label="ROOK">
           <button className="ibtn" onClick={newChat} title="New chat" aria-label="New chat">
             <IconPlus size={18} />
