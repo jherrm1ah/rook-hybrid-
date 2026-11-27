@@ -183,7 +183,16 @@ export function App() {
       abort.current = ctrl;
       setBusy(true);
       try {
-        const res = await streamAnswer(which, history, (soFar) => patch(reply.id, { text: unshield(soFar, vault) }), ctrl.signal);
+        const onText = (soFar: string) => patch(reply.id, { text: unshield(soFar, vault) });
+        let res;
+        try {
+          res = await streamAnswer(which, history, onText, ctrl.signal);
+        } catch (e) {
+          // Live web search unavailable (e.g. no Google Search quota on the free plan): answer from the cloud model, and say so.
+          if (which !== "research" || ctrl.signal.aborted) throw e;
+          patch(reply.id, { route: "cloud", reason: "Live web search isn't available right now → cloud model without search (no sources)" });
+          res = await streamAnswer("cloud", history, onText, ctrl.signal);
+        }
         const final = unshield(res.text, vault);
         patch(reply.id, {
           text: final,

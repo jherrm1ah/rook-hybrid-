@@ -1,0 +1,26 @@
+name: Deploy to Firebase Hosting
+# Publishes ROOK for Chrome to https://rook-hybrid.web.app on every push to main.
+# Needs the repository secret FIREBASE_SERVICE_ACCOUNT (Firebase → Project settings →
+# Service accounts → Generate new private key; paste the whole file as the secret).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: rook-hybrid
+          channelId: live
