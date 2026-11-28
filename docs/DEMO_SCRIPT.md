@@ -1,70 +1,83 @@
-# ROOK for Chrome: demo video script (about 2 min 30 s)
+# ROOK for Chrome: demo video script (2 min 50 s, under the 3-minute limit)
 
-Record on your PC in Chrome, with the on-device model ready (the chip at the top says "On-device model ready").
-Use a screen recorder (Windows: Win + Alt + R, or OBS). Speak slowly. Each scene says what to SAY and what to DO.
+Record on your PC in **desktop Chrome**, with Gemini Nano ready (the top bar says **Nano ready**).
+Open https://rook-hybrid.vercel.app, press Ctrl + Shift + R, and set the browser zoom to 110–125% so text is readable.
+Screen recorder: Windows **Win + Alt + R** (Xbox Game Bar), or OBS. Speak slowly. Cut pauses when editing.
 
-Before you start: open the app, click New, set Auto mode, Shield on. Close other tabs.
+Before recording: Auto mode, Shield on (green), click **New** so the home screen is empty, close other tabs except one
+news or shopping site you'll use in scene 6.
+
+Upload to YouTube as **Public** (the rules require a public video, in English, max 3 minutes), then paste the link into
+Devpost.
 
 ---
 
-## 1. The problem (0:00 to 0:15)
+## 1. The hook (0:00 to 0:15)
 
-SAY: "Every AI assistant sends everything you type to the cloud. Your client's name, their email, your business questions. Even when a small model on your own computer could have answered."
+SAY: "Every AI assistant sends everything you type to the cloud: your clients' names, their emails, your business. Even
+when a small model on your own computer could have answered. This is ROOK."
 
-DO: show the ROOK home screen.
+DO: show the home screen: the black "What should ROOK get done?" card and the tiles.
 
-## 2. The idea (0:15 to 0:30)
+## 2. On your device (0:15 to 0:35)
 
-SAY: "This is ROOK for Chrome. It thinks on your device first, with Gemini Nano, through Firebase AI Logic hybrid inference. It only reaches for the cloud when it has to, and it hides your personal details before it does."
+DO: click **Make a message friendlier** in the Try list.
 
-## 3. Instant, no AI (0:30 to 0:40)
+SAY: "Everyday requests go to Gemini Nano, right here in Chrome, through Firebase AI Logic. Look at the badge: on your
+device. Milliseconds. Free. Private."
 
-DO: click the example "15% of 84,500".
+DO: point at the moving bird while it works ("ROOK IS THINKING", "CHECKING"), then click **How**.
 
-SAY: "Simple maths doesn't need AI at all. Answered instantly, in the browser."
+SAY: "And ROOK checks its own work: Nano graded its answer, it was sure, so the cloud was never called."
 
-## 4. On your device (0:40 to 1:00)
+## 3. The self-check calls in the cloud, safely (0:35 to 1:10)
 
-DO: click "Rewrite this to sound friendlier".
+DO: click **Draft a reply about VAT**.
 
-SAY: "A normal request goes to Gemini Nano, right here on my laptop. Look at the badge: On your device. It took milliseconds and cost nothing."
+SAY: "Now a harder question, with a real person's name and email. Nano answers, checks itself, and isn't confident: tax
+rules need expert, fresh knowledge. So ROOK asks Gemini in the cloud to improve it. But first..."
 
-DO: click "How" under the answer.
+DO: point at **Protected**, then click **What the cloud saw**.
 
-SAY: "And here's the clever part. After answering, Nano checks its own answer. It was sure, so the cloud was never called."
+SAY: "...the Privacy Shield hides the name and email on my device. Left: what I wrote. Right: exactly what the cloud
+received. The cloud never saw them, and ROOK put them back into the answer for me."
 
-## 5. The self-check calls in the cloud (1:00 to 1:40)
+## 4. Research with result cards (1:10 to 1:35)
 
-DO: click the example with Tolu Adeyemi and the VAT question.
+DO: click the globe button, type "best ways for a small shop to accept card payments", send. Wait for the report.
 
-SAY: "Now a harder question, with a real person's name and email in it. Nano answers first, but when it checks itself, it isn't confident. Tax rules need fresh, expert knowledge. So ROOK asks the cloud to improve the answer."
+SAY: "Research goes to the cloud with Google Search. The answer becomes a report, and result cards appear beside it, each
+tied to its section. The summary and follow-up questions are written by Gemini Nano on my device, for free."
 
-DO: wait for the answer. Point at the "Protected" tag. Click "What the cloud saw".
+## 5. Offline (1:35 to 1:55)
 
-SAY: "This is what makes ROOK different. On the left, what I wrote. On the right, exactly what the cloud received. The name and email were replaced on my device before anything left it. The cloud never saw them, and ROOK put them back in the answer for me."
+DO: turn off Wi-Fi. The offline banner appears. Ask: "Give me three subject lines for a payment reminder."
 
-DO: click "How".
-
-SAY: "Every answer shows the path it took: Nano answered, checked itself, the shield hid the details, the cloud improved it."
-
-## 6. Offline (1:40 to 2:05)
-
-DO: turn off Wi-Fi (or unplug the network). The offline banner appears. Ask: "Give me three subject lines for a payment reminder email."
-
-SAY: "No internet? ROOK keeps thinking. Gemini Nano runs entirely on the device, so it still answers."
+SAY: "No internet? ROOK keeps thinking. Gemini Nano runs entirely on this computer."
 
 DO: turn Wi-Fi back on.
 
-## 7. Wrap up (2:05 to 2:30)
+## 6. Float and Look (1:55 to 2:35)
 
-DO: point at the line above the message box ("answered without the cloud", "details kept private").
+DO: click **Float** (two arrows). ROOK becomes a small floating icon. Switch to your other tab (a news or shopping page).
 
-SAY: "ROOK keeps count: how many questions never needed the cloud, and how many private details never left this computer. Device first, cloud when needed, private always. That's ROOK for Chrome, built on Firebase AI Logic, protected by App Check."
+SAY: "ROOK can float on top of everything I do. I'm on another site now, and ROOK is still here."
+
+DO: click **Look** on the icon, choose that tab, Share. The screenshot scans in. Click send.
+
+SAY: "One tap, and ROOK looks at what I'm seeing and explains it."
+
+## 7. Close (2:35 to 2:50)
+
+DO: bring ROOK back. Point at "answered without the cloud" and "details kept private" above the message box.
+
+SAY: "Device first. Cloud only when it's needed. Private always. ROOK for Chrome, built on Firebase AI Logic hybrid
+inference, protected by App Check."
 
 ---
 
-## Tips
+## If something goes wrong while recording
 
-- If the cloud is slow during recording, just record that scene again. Cut the pauses when editing.
-- Keep the browser zoomed to 110 to 125 percent so text is readable in the video.
-- Upload to YouTube as **Public** (the rules require a public video, under 3 minutes) and paste the link into Devpost.
+- The cloud says it's busy: record that scene again a minute later.
+- Gemini Nano isn't ready: click **Get Gemini Nano** on the home screen first and let it finish downloading.
+- Keep the whole video under **3:00**. Judges may stop watching at 3 minutes.
